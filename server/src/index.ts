@@ -3,12 +3,17 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import tradesRouter from "./routes/trades";
 
 // ---------------------------------------------------------------------------
 // Environment validation
 // ---------------------------------------------------------------------------
 
-const REQUIRED_ENV_VARS = ["JWT_SECRET", "DATABASE_URL"] as const;
+const REQUIRED_ENV_VARS = [
+  "JWT_SECRET",
+  "DATABASE_URL",
+  "ESCROW_CONTRACT_ADDRESS",
+] as const;
 
 const missingVars = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
 
@@ -57,6 +62,9 @@ app.use(express.json());
 app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
 });
+
+// Trade marketplace routes
+app.use("/api/trades", tradesRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler
