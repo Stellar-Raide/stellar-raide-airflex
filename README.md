@@ -64,28 +64,21 @@ Express API
 
 ``` text
 stellar-raide-stellar-raide-airflex/
-├── apps/
-│   ├── web/
-│   ├── api/
-│   ├── dashboard/
-│   └── docs-site/
-├── contracts/
-│   ├── escrow/
-│   ├── marketplace/
-│   └── token/
-├── packages/
-│   ├── stellar-sdk/
-│   ├── wallet/
-│   ├── escrow-sdk/
-│   ├── marketplace-sdk/
-│   └── shared/
-├── docs/
-├── examples/
-├── .github/
-├── CONTRIBUTING.md
-├── SECURITY.md
-├── ROADMAP.md
-├── CHANGELOG.md
+├── contracts/          # Soroban smart contracts (escrow, marketplace, token)
+├── frontend/
+│   └── app/            # Next.js application
+├── server/
+│   ├── src/
+│   │   ├── middleware/ # Express middleware (auth, etc.)
+│   │   ├── routes/     # API route handlers
+│   │   ├── services/   # External integrations (Stellar SDK, etc.)
+│   │   ├── types/      # Shared TypeScript types
+│   │   ├── db.ts       # PostgreSQL connection pool
+│   │   └── index.ts    # Server entry point
+│   ├── .env.example
+│   ├── package.json
+│   └── tsconfig.json
+├── .gitignore
 ├── LICENSE
 └── README.md
 ```
