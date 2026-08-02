@@ -88,31 +88,20 @@ Full architecture diagram → [docs/architecture.md](./docs/architecture.md)
 
 ```
 stellar-raide-stellar-raide-airflex/
-├── contracts/
-│   ├── escrow/
-│   │   └── src/lib.rs          # Soroban escrow contract (Rust)
-│   └── Cargo.toml              # Workspace manifest
-├── docs/
-│   ├── overview.md             # Project overview and concepts
-│   ├── getting-started.md      # Local setup guide
-│   ├── api-reference.md        # REST API documentation
-│   ├── smart-contract.md       # Contract functions and security
-│   ├── architecture.md         # System diagrams and design decisions
-│   └── environment.md          # All environment variables
+├── contracts/          # Soroban smart contracts (escrow, marketplace, token)
 ├── frontend/
-│   └── app/                    # Next.js application
+│   └── app/            # Next.js application
 ├── server/
 │   ├── src/
-│   │   ├── middleware/         # authenticate.ts — JWT verification
-│   │   ├── routes/             # trades.ts — marketplace endpoints
-│   │   ├── services/           # stellar.ts — Stellar SDK integration
-│   │   ├── types/              # trade.ts — shared TypeScript types
-│   │   ├── db.ts               # PostgreSQL connection pool
-│   │   └── index.ts            # Server entry point
+│   │   ├── middleware/ # Express middleware (auth, etc.)
+│   │   ├── routes/     # API route handlers
+│   │   ├── services/   # External integrations (Stellar SDK, etc.)
+│   │   ├── types/      # Shared TypeScript types
+│   │   ├── db.ts       # PostgreSQL connection pool
+│   │   └── index.ts    # Server entry point
 │   ├── .env.example
 │   ├── package.json
 │   └── tsconfig.json
-├── SOROBAN_DEPLOY_GUIDE.md     # Step-by-step contract deployment guide
 ├── .gitignore
 ├── LICENSE
 └── README.md
