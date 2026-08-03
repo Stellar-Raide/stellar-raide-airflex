@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import tradesRouter from "./routes/trades";
+import authRouter from "./routes/auth";
 
 // ---------------------------------------------------------------------------
 // Environment validation
@@ -62,6 +63,9 @@ app.use(express.json());
 app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
 });
+
+// Auth routes (OTP signup + verification)
+app.use("/api/auth", authRouter);
 
 // Trade marketplace routes
 app.use("/api/trades", tradesRouter);
