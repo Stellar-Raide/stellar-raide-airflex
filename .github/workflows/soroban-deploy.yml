@@ -1,0 +1,136 @@
+name: Deploy Soroban Contract
+
+# ---------------------------------------------------------------------------
+# Triggers
+# ---------------------------------------------------------------------------
+# Manual dispatch only — deploying a contract costs real XLM and produces an
+# immutable on-chain address. Never run this automatically on every push.
+#
+# Required GitHub secrets (Settings → Secrets → Actions):
+#   SOROBAN_DEPLOYER_SECRET   — Stellar secret key (S...) of the deployer account
+#   SOROBAN_ADMIN_ADDRESS     — Stellar public key (G...) to set as contract admin
+#
+# Optional — defaults to testnet if not set:
+#   STELLAR_NETWORK           — "testnet" | "mainnet"
+#   SOROBAN_RPC_URL           — override the default RPC endpoint
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: "Target network"
+        required: true
+        default: testnet
+        type: choice
+        options:
+          - testnet
+          - mainnet
+      initialize:
+        description: "Call initialize() after deployment?"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+# One deploy at a time per network.
+concurrency:
+  group: soroban-deploy-${{ inputs.network }}
+  cancel-in-progress: false
+
+# ---------------------------------------------------------------------------
+# Jobs
+# ---------------------------------------------------------------------------
+jobs:
+  deploy:
+    name: Build & Deploy (${{ inputs.network }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.network }}   # maps to a GitHub Environment for secret scoping
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Rust + WASM target ────────────────────────────────────────────────
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: cargo-deploy-${{ hashFiles('contracts/Cargo.lock') }}
+
+      # ── stellar-cli ───────────────────────────────────────────────────────
+      - name: Install stellar-cli
+        run: cargo install --locked stellar-cli
+
+      # ── Build WASM ────────────────────────────────────────────────────────
+      - name: Build WASM (release)
+        working-directory: contracts
+        run: cargo build --release --target wasm32v1-none
+
+      # ── Configure network identity ────────────────────────────────────────
+      - name: Add deployer identity
+        env:
+          SOROBAN_DEPLOYER_SECRET: ${{ secrets.SOROBAN_DEPLOYER_SECRET }}
+        run: |
+          echo "$SOROBAN_DEPLOYER_SECRET" | \
+            stellar keys add deployer --secret-key --stdin
+
+      - name: Set network config
+        run: |
+          if [ "${{ inputs.network }}" = "mainnet" ]; then
+            stellar network add mainnet \
+              --rpc-url "${SOROBAN_RPC_URL:-https://mainnet.stellar.validationcloud.io/v1/}" \
+              --network-passphrase "Public Global Stellar Network ; September 2015"
+          else
+            stellar network add testnet \
+              --rpc-url "${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}" \
+              --network-passphrase "Test SDF Network ; September 2015"
+          fi
+        env:
+          SOROBAN_RPC_URL: ${{ vars.SOROBAN_RPC_URL }}
+
+      # ── Deploy ────────────────────────────────────────────────────────────
+      - name: Deploy contract
+        id: deploy
+        run: |
+          CONTRACT_ID=$(stellar contract deploy \
+            --wasm contracts/target/wasm32v1-none/release/stellar-raide-stellar-raide-airflex_escrow.wasm \
+            --source deployer \
+            --network ${{ inputs.network }})
+          echo "contract_id=$CONTRACT_ID" >> "$GITHUB_OUTPUT"
+          echo "Deployed contract: $CONTRACT_ID"
+
+      # ── Initialize (optional) ─────────────────────────────────────────────
+      - name: Initialize contract
+        if: inputs.initialize == 'true'
+        env:
+          SOROBAN_ADMIN_ADDRESS: ${{ secrets.SOROBAN_ADMIN_ADDRESS }}
+        run: |
+          stellar contract invoke \
+            --id ${{ steps.deploy.outputs.contract_id }} \
+            --source deployer \
+            --network ${{ inputs.network }} \
+            -- initialize \
+            --admin "$SOROBAN_ADMIN_ADDRESS"
+
+      # ── Summary ───────────────────────────────────────────────────────────
+      - name: Print deployment summary
+        run: |
+          echo "### ✅ Soroban Contract Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Network | ${{ inputs.network }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Contract ID | \`${{ steps.deploy.outputs.contract_id }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Initialized | ${{ inputs.initialize }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Next step:** Update \`ESCROW_CONTRACT_ADDRESS\` in \`server/.env\` and \`server/.env.example\`." >> "$GITHUB_STEP_SUMMARY"

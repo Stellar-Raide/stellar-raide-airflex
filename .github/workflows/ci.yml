@@ -1,0 +1,197 @@
+name: CI
+
+# ---------------------------------------------------------------------------
+# Triggers
+# ---------------------------------------------------------------------------
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs for the same branch/PR when a new push arrives,
+# saving minutes on superseded commits.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# ---------------------------------------------------------------------------
+# Jobs
+# ---------------------------------------------------------------------------
+jobs:
+
+  # -------------------------------------------------------------------------
+  # 1. Server — type-check + build
+  # -------------------------------------------------------------------------
+  server:
+    name: Server (TypeScript)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Type-check without emitting files — catches type errors fast
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      # Full compile to dist/ — confirms the build artefact is valid
+      - name: Build
+        run: npm run build
+
+      # Upload the compiled artefact so other jobs / releases can use it
+      - name: Upload server build
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-dist
+          path: server/dist/
+          retention-days: 7
+
+  # -------------------------------------------------------------------------
+  # 2. Frontend — type-check + Next.js build
+  # -------------------------------------------------------------------------
+  frontend:
+    name: Frontend (Next.js)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Type-check across the entire Next.js app
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      # Build the Next.js app — catches import errors, missing env vars
+      # flagged as required, and invalid page exports.
+      # NEXT_PUBLIC_API_URL is set to a placeholder so the build doesn't fail
+      # on a missing env var; the real value is only needed at runtime.
+      - name: Build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+        run: npm run build
+
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/.next/
+          retention-days: 7
+
+  # -------------------------------------------------------------------------
+  # 3. Soroban contract — format check, clippy, tests
+  # -------------------------------------------------------------------------
+  contracts:
+    name: Contracts (Rust / Soroban)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: contracts
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Rust toolchain pinned to match the Soroban SDK requirement.
+      # The `wasm32v1-none` target is required for `stellar contract build`.
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+          components: rustfmt, clippy
+
+      # Cache the Cargo registry and build artifacts to speed up runs.
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: cargo-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: cargo-
+
+      # Enforce consistent formatting (fails on any diff)
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      # Lint with all Soroban-relevant warnings treated as errors
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      # Run the in-contract unit tests (uses soroban-sdk testutils)
+      - name: Test
+        run: cargo test --all-features
+
+      # Build the release WASM to confirm it compiles to a deployable artefact.
+      # This uses the workspace release profile (opt-level=z, LTO, etc.)
+      - name: Build WASM
+        run: cargo build --release --target wasm32v1-none
+
+      - name: Upload WASM artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: escrow-wasm
+          path: contracts/target/wasm32v1-none/release/stellar-raide-stellar-raide-airflex_escrow.wasm
+          retention-days: 7
+
+  # -------------------------------------------------------------------------
+  # 4. Security audit — only on pushes to main (not every PR draft)
+  # -------------------------------------------------------------------------
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Audit server dependencies
+        working-directory: server
+        # `npm audit` exits non-zero on high/critical vulns
+        run: npm audit --audit-level=high
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit Rust dependencies
+        working-directory: contracts
+        run: cargo audit

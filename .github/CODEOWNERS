@@ -1,0 +1,24 @@
+# CODEOWNERS — GitHub uses this file to auto-request reviews.
+# Syntax: <path pattern>  <@user or @org/team>
+#
+# Replace the placeholder handles with real GitHub usernames or teams.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything not matched below
+*                               @dark-sarge
+
+# Smart contracts — require an extra reviewer for any on-chain changes
+contracts/                      @dark-sarge
+
+# CI/CD — pipeline changes need maintainer sign-off
+.github/workflows/              @dark-sarge
+
+# Server — backend API
+server/                         @dark-sarge
+
+# Frontend
+frontend/                       @dark-sarge
+
+# Docs
+docs/                           @dark-sarge
+*.md                            @dark-sarge
