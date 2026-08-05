@@ -5,6 +5,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import tradesRouter from "./routes/trades";
 import authRouter from "./routes/auth";
+import walletRouter from "./routes/wallet";
 
 // ---------------------------------------------------------------------------
 // Environment validation
@@ -14,6 +15,7 @@ const REQUIRED_ENV_VARS = [
   "JWT_SECRET",
   "DATABASE_URL",
   "ESCROW_CONTRACT_ADDRESS",
+  "ENCRYPTION_KEY",
 ] as const;
 
 const missingVars = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
@@ -69,6 +71,9 @@ app.use("/api/auth", authRouter);
 
 // Trade marketplace routes
 app.use("/api/trades", tradesRouter);
+
+// Wallet routes (Stellar public key + balance)
+app.use("/api/wallet", walletRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler
