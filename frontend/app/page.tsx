@@ -104,11 +104,11 @@ function TradeCard({ trade }: { trade: TradeOffer }) {
 
       {/* CTA */}
       <a
-        href={`/trades/${trade.id}/buy`}
+        href={`/trades/${trade.id}`}
         className="mt-auto inline-flex items-center justify-center rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
-        aria-label={`Buy ${formatAssetType(trade.asset_type)} worth ₦${trade.amount.toLocaleString()} from ${sellerAlias}`}
+        aria-label={`View and buy ${formatAssetType(trade.asset_type)} worth ₦${trade.amount.toLocaleString()} from ${sellerAlias}`}
       >
-        Buy Now
+        View &amp; Buy
       </a>
     </article>
   );
