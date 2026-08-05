@@ -3,6 +3,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import pool from "../db";
+import { generateAndFundWallet } from "../services/stellar";
 
 const router = Router();
 
@@ -221,7 +222,41 @@ router.post(
       [user.id]
     );
 
-    const stellarPublicKey = user.stellar_public_key ?? "";
+    // Provision a Stellar wallet if the user doesn't have one yet
+    let stellarPublicKey = user.stellar_public_key ?? "";
+
+    if (!stellarPublicKey) {
+      try {
+        const { publicKey, encryptedSecretKey } = await generateAndFundWallet();
+
+        // Persist wallet — upsert in case of concurrent requests
+        await pool.query(
+          `INSERT INTO wallets (id, user_id, stellar_public_key, stellar_secret_key)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (user_id) DO UPDATE
+             SET stellar_public_key  = EXCLUDED.stellar_public_key,
+                 stellar_secret_key  = EXCLUDED.stellar_secret_key`,
+          [uuidv4(), user.id, publicKey, encryptedSecretKey]
+        );
+
+        // Mirror the public key on the users row for quick JWT embedding
+        await pool.query(
+          `UPDATE users SET stellar_public_key = $1 WHERE id = $2`,
+          [publicKey, user.id]
+        );
+
+        stellarPublicKey = publicKey;
+      } catch (err) {
+        // Wallet creation is non-fatal for auth — log and continue.
+        // The user can retry; wallet provisioning is idempotent.
+        console.error(
+          "[auth] Wallet provisioning failed for user",
+          user.id,
+          "–",
+          (err as Error).message
+        );
+      }
+    }
 
     // Issue JWT — same payload shape the authenticate middleware expects
     const secret = process.env["JWT_SECRET"]!;
