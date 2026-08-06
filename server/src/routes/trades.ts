@@ -1,43 +1,19 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import pool from "../db";
 import { authenticate, AuthenticatedRequest } from "../middleware/authenticate";
+import { validate } from "../middleware/validate";
 import { createListing, depositToEscrow } from "../services/stellar";
 import type { TradeOffer } from "../types/trade";
+import {
+  createTradeSchema,
+  buyTradeSchema,
+  paginationSchema,
+  type CreateTradeInput,
+  type BuyTradeInput,
+} from "../schemas";
 
 const router = Router();
-
-// ---------------------------------------------------------------------------
-// Validation schemas
-// ---------------------------------------------------------------------------
-
-const createTradeSchema = z.object({
-  assetType: z
-    .string()
-    .min(1)
-    .max(50)
-    .regex(/^[A-Za-z0-9_-]+$/, "assetType must be alphanumeric"),
-  amount: z.number().positive("amount must be greater than 0"),
-  expiresInHours: z
-    .number()
-    .int()
-    .min(1, "minimum expiry is 1 hour")
-    .max(168, "maximum expiry is 7 days"),
-});
-
-const paginationSchema = z.object({
-  page: z
-    .string()
-    .optional()
-    .transform((v) => (v ? parseInt(v, 10) : 1))
-    .pipe(z.number().int().min(1)),
-  limit: z
-    .string()
-    .optional()
-    .transform((v) => (v ? parseInt(v, 10) : 20))
-    .pipe(z.number().int().min(1).max(100)),
-});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -105,17 +81,9 @@ router.get(
 router.post(
   "/",
   authenticate,
+  validate(createTradeSchema),
   asyncHandler(async (req, res) => {
-    const parsed = createTradeSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({
-        error: "Validation failed",
-        details: parsed.error.flatten().fieldErrors,
-      });
-      return;
-    }
-
-    const { assetType, amount, expiresInHours } = parsed.data;
+    const { assetType, amount, expiresInHours } = req.body as CreateTradeInput;
     const { sub: sellerId, stellarPublicKey } = (req as AuthenticatedRequest).user;
 
     // Fetch seller's encrypted secret key from their wallet record
@@ -185,28 +153,14 @@ router.get(
 // POST /api/trades/:id/buy  (authenticated)
 // ---------------------------------------------------------------------------
 
-const buySchema = z.object({
-  buyerSecretKey: z
-    .string()
-    .min(56, "Invalid Stellar secret key")
-    .max(56, "Invalid Stellar secret key"),
-});
-
 router.post(
   "/:id/buy",
   authenticate,
+  validate(buyTradeSchema),
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { sub: buyerId, stellarPublicKey } = (req as AuthenticatedRequest).user;
-
-    const parsed = buySchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({
-        error: "Validation failed",
-        details: parsed.error.flatten().fieldErrors,
-      });
-      return;
-    }
+    const { buyerSecretKey } = req.body as BuyTradeInput;
 
     // Load the trade offer
     const { rows: tradeRows } = await pool.query<TradeOffer>(
@@ -241,7 +195,7 @@ router.post(
     // Call Soroban deposit_to_escrow
     const txHash = await depositToEscrow({
       buyerPublicKey: stellarPublicKey,
-      buyerSecretKey: parsed.data.buyerSecretKey,
+      buyerSecretKey: buyerSecretKey,
       listingId: trade.contract_listing_id,
       amount: trade.amount,
     });
