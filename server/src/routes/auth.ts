@@ -1,9 +1,15 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import pool from "../db";
 import { generateAndFundWallet } from "../services/stellar";
+import { validate } from "../middleware/validate";
+import {
+  requestOtpSchema,
+  verifyOtpSchema,
+  type RequestOtpInput,
+  type VerifyOtpInput,
+} from "../schemas";
 
 const router = Router();
 
@@ -90,26 +96,8 @@ async function verifyOtpWithTermii(
 // ---------------------------------------------------------------------------
 // Validation schemas
 // ---------------------------------------------------------------------------
-
-/** E.164-like Nigerian phone numbers: +234XXXXXXXXXX or 0XXXXXXXXXX (10–15 digits total) */
-const phoneSchema = z.object({
-  phone: z
-    .string()
-    .trim()
-    .regex(
-      /^\+?[1-9]\d{9,14}$/,
-      "Enter a valid phone number (e.g. +2348012345678)"
-    ),
-});
-
-const verifySchema = z.object({
-  phone: z.string().trim().min(1),
-  otp: z
-    .string()
-    .trim()
-    .length(6, "OTP must be exactly 6 digits")
-    .regex(/^\d{6}$/, "OTP must contain only digits"),
-});
+// Schemas are defined in src/schemas/auth.schemas.ts and imported above.
+// The validate() middleware handles 422 responses automatically.
 
 // ---------------------------------------------------------------------------
 // POST /api/auth/request-otp
@@ -117,17 +105,9 @@ const verifySchema = z.object({
 
 router.post(
   "/request-otp",
+  validate(requestOtpSchema),
   asyncHandler(async (req, res) => {
-    const parsed = phoneSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({
-        error: "Validation failed",
-        details: parsed.error.flatten().fieldErrors,
-      });
-      return;
-    }
-
-    const { phone } = parsed.data;
+    const { phone } = req.body as RequestOtpInput;
 
     // Upsert user row — create if first time, leave existing data untouched
     await pool.query(
@@ -155,17 +135,9 @@ router.post(
 
 router.post(
   "/verify-otp",
+  validate(verifyOtpSchema),
   asyncHandler(async (req, res) => {
-    const parsed = verifySchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({
-        error: "Validation failed",
-        details: parsed.error.flatten().fieldErrors,
-      });
-      return;
-    }
-
-    const { phone, otp } = parsed.data;
+    const { phone, otp } = req.body as VerifyOtpInput;
 
     // Look up the user and their pending OTP pin
     const { rows } = await pool.query<{
