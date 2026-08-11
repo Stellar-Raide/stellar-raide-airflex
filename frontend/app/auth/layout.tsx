@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import ThemeToggle from "../../components/ThemeToggle";
 
 /**
  * Auth layout — centred card on a violet-tinted background.

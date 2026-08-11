@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import ThemeToggle from "../../components/ThemeToggle";
 
 export default function SellLayout({ children }: { children: ReactNode }) {
   return (

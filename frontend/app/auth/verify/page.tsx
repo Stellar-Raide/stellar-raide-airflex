@@ -66,23 +66,18 @@ function useResendCooldown() {
 // ---------------------------------------------------------------------------
 
 export default function VerifyPage() {
-  // Read phone from the URL query string (?phone=...)
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
-
-  const [otpError, setOtpError] = useState<string | null>(null);
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [phone, setPhone]                   = useState("");
+  const [otp, setOtp]                       = useState("");
+  const [otpError, setOtpError]             = useState<string | null>(null);
+  const [serverError, setServerError]       = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
+  const [loading, setLoading]               = useState(false);
+  const [resending, setResending]           = useState(false);
 
   const { cooldown, startCooldown } = useResendCooldown();
 
-  const apiUrl =
-    process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:3001";
+  const apiUrl = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:3001";
 
-  // Extract phone from query string on mount (client-only)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const p = params.get("phone");
@@ -133,13 +128,11 @@ export default function VerifyPage() {
         return;
       }
 
-      // Persist token and user info client-side
       saveToken(data.token);
       saveUser(data.user);
 
       setSuccessMessage("Verified! Redirecting to your dashboard…");
 
-      // Redirect after a brief moment so the user sees the success message
       setTimeout(() => {
         window.location.href = "/";
       }, 1200);
@@ -193,12 +186,12 @@ export default function VerifyPage() {
     <>
       {/* Heading */}
       <div className="mb-8">
-        <h1 className="text-2xl font-extrabold text-gray-900">
+        <h1 className="text-2xl font-extrabold text-gray-900 dark:text-gray-100">
           Enter your OTP
         </h1>
-        <p className="mt-2 text-sm text-gray-500">
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
           We sent a 6-digit code to{" "}
-          <span className="font-semibold text-gray-700">
+          <span className="font-semibold text-gray-700 dark:text-gray-300">
             {phone || "your phone"}
           </span>
           . It expires in 10 minutes.
@@ -211,7 +204,7 @@ export default function VerifyPage() {
         <div className="flex flex-col gap-1.5">
           <label
             htmlFor="otp"
-            className="text-sm font-medium text-gray-700"
+            className="text-sm font-medium text-gray-700 dark:text-gray-300"
           >
             Verification code
           </label>
@@ -224,7 +217,6 @@ export default function VerifyPage() {
             maxLength={6}
             value={otp}
             onChange={(e) => {
-              // Accept digits only
               const val = e.target.value.replace(/\D/g, "").slice(0, 6);
               setOtp(val);
               if (otpError) setOtpError(null);
@@ -233,14 +225,14 @@ export default function VerifyPage() {
             disabled={loading || !!successMessage}
             aria-describedby={otpError ? "otp-error" : undefined}
             aria-invalid={otpError ? "true" : undefined}
-            className={`w-full rounded-xl border px-4 py-3 text-center text-2xl font-bold tracking-[0.5em] text-gray-900 placeholder-gray-300 outline-none transition-colors focus:ring-2 focus:ring-violet-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400 ${
+            className={`w-full rounded-xl border px-4 py-3 text-center text-2xl font-bold tracking-[0.5em] text-gray-900 placeholder-gray-300 outline-none transition-colors focus:ring-2 focus:ring-violet-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400 dark:text-gray-100 dark:placeholder-gray-600 dark:disabled:bg-gray-700 dark:disabled:text-gray-500 ${
               otpError
-                ? "border-red-400 bg-red-50 focus:ring-red-400"
-                : "border-gray-200 bg-white hover:border-gray-300"
+                ? "border-red-400 bg-red-50 focus:ring-red-400 dark:border-red-500 dark:bg-red-900/20"
+                : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:hover:border-gray-500"
             }`}
           />
           {otpError && (
-            <p id="otp-error" role="alert" className="text-xs text-red-600">
+            <p id="otp-error" role="alert" className="text-xs text-red-600 dark:text-red-400">
               {otpError}
             </p>
           )}
@@ -250,7 +242,7 @@ export default function VerifyPage() {
         {serverError && (
           <div
             role="alert"
-            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
           >
             {serverError}
           </div>
@@ -260,7 +252,7 @@ export default function VerifyPage() {
         {successMessage && (
           <div
             role="status"
-            className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700"
+            className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400"
           >
             {successMessage}
           </div>
@@ -270,7 +262,7 @@ export default function VerifyPage() {
         <button
           type="submit"
           disabled={loading || !!successMessage}
-          className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-violet-300"
+          className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-violet-300 dark:focus-visible:ring-offset-gray-800 dark:disabled:bg-violet-800"
         >
           {loading ? (
             <>
@@ -280,19 +272,8 @@ export default function VerifyPage() {
                 fill="none"
                 aria-hidden="true"
               >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"
-                />
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
               </svg>
               Verifying…
             </>
@@ -303,13 +284,13 @@ export default function VerifyPage() {
       </form>
 
       {/* Resend */}
-      <div className="mt-6 text-center text-sm text-gray-500">
+      <div className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
         Didn&apos;t receive a code?{" "}
         <button
           type="button"
           onClick={handleResend}
           disabled={cooldown > 0 || resending || !!successMessage}
-          className="font-semibold text-violet-600 hover:text-violet-700 focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500 rounded disabled:cursor-not-allowed disabled:text-gray-400"
+          className="font-semibold text-violet-600 hover:text-violet-700 focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500 rounded disabled:cursor-not-allowed disabled:text-gray-400 dark:text-violet-400 dark:hover:text-violet-300 dark:disabled:text-gray-600"
         >
           {resending
             ? "Sending…"
@@ -320,11 +301,11 @@ export default function VerifyPage() {
       </div>
 
       {/* Back link */}
-      <p className="mt-4 text-center text-sm text-gray-400">
+      <p className="mt-4 text-center text-sm text-gray-400 dark:text-gray-500">
         Wrong number?{" "}
         <a
           href="/auth/signup"
-          className="font-semibold text-violet-600 hover:text-violet-700 focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500 rounded"
+          className="font-semibold text-violet-600 hover:text-violet-700 focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500 rounded dark:text-violet-400 dark:hover:text-violet-300"
         >
           Go back
         </a>

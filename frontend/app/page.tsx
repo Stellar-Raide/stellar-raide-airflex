@@ -1,4 +1,5 @@
 import type { TradeOffer } from "../../server/src/types/trade";
+import ThemeToggle from "../components/ThemeToggle";
 
 interface TradesResponse {
   data: TradeOffer[];

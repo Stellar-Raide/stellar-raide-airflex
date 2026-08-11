@@ -145,5 +145,5 @@ vite.config.ts.timestamp-*
 # Kiro IDE
 .kiro/
 
-# Pull request docs
+# Pull request description docs (local only, not for version control)
 pr-*.md
