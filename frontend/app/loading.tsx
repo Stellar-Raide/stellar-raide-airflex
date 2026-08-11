@@ -1,40 +1,27 @@
 /**
  * loading.tsx — Global loading UI (Next.js App Router convention)
  *
- * Next.js automatically shows this component as an instant fallback while a
- * route segment (page or layout) is streaming in. It is a Server Component
- * by default so it renders immediately without waiting for any data.
- *
- * The skeleton mirrors the structure of the root marketplace page:
- *   - Sticky nav bar
- *   - Hero section
- *   - Listing card grid (8 placeholder cards)
- *
- * Pulse animation is provided by Tailwind's `animate-pulse`. Individual
- * skeleton blocks use `bg-gray-200` on a `bg-gray-50` background to create
- * a low-contrast shimmer that doesn't distract.
+ * Skeleton mirrors the structure of the root marketplace page.
+ * Dark mode variants ensure the shimmer reads correctly in both themes.
  */
 
 // ---------------------------------------------------------------------------
 // Skeleton primitives
 // ---------------------------------------------------------------------------
 
-/** A single rounded shimmer block */
-function Bone({
-  className = "",
-}: {
-  className?: string;
-}) {
+function Bone({ className = "" }: { className?: string }) {
   return (
-    <div className={`rounded-lg bg-gray-200 ${className}`} aria-hidden="true" />
+    <div
+      className={`rounded-lg bg-gray-200 dark:bg-gray-700 ${className}`}
+      aria-hidden="true"
+    />
   );
 }
 
-/** Skeleton for a single trade listing card */
 function CardSkeleton() {
   return (
     <div
-      className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
+      className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800"
       aria-hidden="true"
     >
       {/* Header row: seller label + badge */}
@@ -68,12 +55,12 @@ function CardSkeleton() {
 export default function GlobalLoading() {
   return (
     <div
-      className="min-h-screen bg-gray-50 animate-pulse"
+      className="min-h-screen bg-gray-50 animate-pulse dark:bg-gray-900"
       role="status"
       aria-label="Loading marketplace listings"
     >
       {/* Nav skeleton */}
-      <header className="sticky top-0 z-10 border-b border-gray-100 bg-white/80 backdrop-blur-md">
+      <header className="sticky top-0 z-10 border-b border-gray-100 bg-white/80 backdrop-blur-md dark:border-gray-700 dark:bg-gray-900/80">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
           {/* Logo */}
           <div className="flex items-center gap-2">
@@ -84,13 +71,15 @@ export default function GlobalLoading() {
           <div className="flex items-center gap-3">
             <Bone className="hidden sm:block h-9 w-16 rounded-xl" />
             <Bone className="h-9 w-20 rounded-xl" />
+            {/* ThemeToggle placeholder */}
+            <Bone className="h-9 w-9 rounded-lg" />
           </div>
         </div>
       </header>
 
       <main>
         {/* Hero skeleton */}
-        <section className="bg-white border-b border-gray-100">
+        <section className="bg-white border-b border-gray-100 dark:bg-gray-800 dark:border-gray-700">
           <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
             <div className="max-w-2xl flex flex-col gap-4">
               <Bone className="h-5 w-36 rounded-full" />
@@ -125,7 +114,6 @@ export default function GlobalLoading() {
         </section>
       </main>
 
-      {/* Screen-reader only text */}
       <span className="sr-only">Loading, please wait…</span>
     </div>
   );

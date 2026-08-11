@@ -8,21 +8,17 @@ import type { TradeOffer } from "../../../server/src/types/trade";
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Asset types recognised by the smart contract and server Zod schema. */
 const ASSET_OPTIONS = [
-  { value: "MTN_AIRTIME",  label: "MTN — Airtime" },
-  { value: "MTN_DATA",     label: "MTN — Data" },
-  { value: "GLO_AIRTIME",  label: "Glo — Airtime" },
-  { value: "GLO_DATA",     label: "Glo — Data" },
-  { value: "AIRTEL_AIRTIME", label: "Airtel — Airtime" },
-  { value: "AIRTEL_DATA",  label: "Airtel — Data" },
+  { value: "MTN_AIRTIME",     label: "MTN — Airtime" },
+  { value: "MTN_DATA",        label: "MTN — Data" },
+  { value: "GLO_AIRTIME",     label: "Glo — Airtime" },
+  { value: "GLO_DATA",        label: "Glo — Data" },
+  { value: "AIRTEL_AIRTIME",  label: "Airtel — Airtime" },
+  { value: "AIRTEL_DATA",     label: "Airtel — Data" },
   { value: "9MOBILE_AIRTIME", label: "9mobile — Airtime" },
-  { value: "9MOBILE_DATA", label: "9mobile — Data" },
+  { value: "9MOBILE_DATA",    label: "9mobile — Data" },
 ] as const;
 
-/**
- * Expiry options map to `expiresInHours` accepted by the server (1–168).
- */
 const EXPIRY_OPTIONS = [
   { value: 1,   label: "1 hour" },
   { value: 6,   label: "6 hours" },
@@ -39,7 +35,7 @@ const EXPIRY_OPTIONS = [
 
 interface FormFields {
   assetType: string;
-  amount: string;          // kept as string while the user types
+  amount: string;
   expiresInHours: number;
 }
 
@@ -94,24 +90,12 @@ function Spinner() {
       fill="none"
       aria-hidden="true"
     >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z"
-      />
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
     </svg>
   );
 }
 
-/** Labelled form field wrapper — handles error display and aria wiring. */
 function Field({
   id,
   label,
@@ -127,13 +111,13 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-gray-700">
+      <label htmlFor={id} className="text-sm font-medium text-gray-700 dark:text-gray-300">
         {label}
       </label>
-      {hint && <p className="text-xs text-gray-400">{hint}</p>}
+      {hint && <p className="text-xs text-gray-400 dark:text-gray-500">{hint}</p>}
       {children}
       {error && (
-        <p id={`${id}-error`} role="alert" className="text-xs text-red-600">
+        <p id={`${id}-error`} role="alert" className="text-xs text-red-600 dark:text-red-400">
           {error}
         </p>
       )}
@@ -144,10 +128,16 @@ function Field({
 const inputBase =
   "w-full rounded-xl border px-4 py-3 text-sm text-gray-900 outline-none transition-colors " +
   "focus:ring-2 focus:ring-violet-500 disabled:cursor-not-allowed disabled:bg-gray-50 " +
-  "disabled:text-gray-400 placeholder-gray-400";
+  "disabled:text-gray-400 placeholder-gray-400 " +
+  "dark:text-gray-100 dark:placeholder-gray-500 dark:disabled:bg-gray-800 dark:disabled:text-gray-500";
 
-const inputNormal = "border-gray-200 bg-white hover:border-gray-300";
-const inputError  = "border-red-400 bg-red-50 focus:ring-red-400";
+const inputNormal =
+  "border-gray-200 bg-white hover:border-gray-300 " +
+  "dark:border-gray-600 dark:bg-gray-700 dark:hover:border-gray-500";
+
+const inputError =
+  "border-red-400 bg-red-50 focus:ring-red-400 " +
+  "dark:border-red-500 dark:bg-red-900/20 dark:focus:ring-red-500";
 
 // ---------------------------------------------------------------------------
 // Success confirmation panel
@@ -162,32 +152,28 @@ function SuccessPanel({ trade }: { trade: TradeOffer }) {
     <div
       role="status"
       aria-live="polite"
-      className="flex flex-col gap-6 rounded-2xl border border-green-200 bg-green-50 px-8 py-10"
+      className="flex flex-col gap-6 rounded-2xl border border-green-200 bg-green-50 px-8 py-10 dark:border-green-800 dark:bg-green-900/20"
     >
-      {/* Icon + heading */}
       <div className="flex flex-col items-center gap-3 text-center">
         <span aria-hidden="true" className="text-5xl">🎉</span>
-        <h2 className="text-2xl font-extrabold text-gray-900">
+        <h2 className="text-2xl font-extrabold text-gray-900 dark:text-gray-100">
           Listing Created!
         </h2>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-gray-600 dark:text-gray-400">
           Your trade offer is now live on the AirFlex marketplace.
         </p>
       </div>
 
-      {/* Trade details */}
-      <dl className="divide-y divide-green-100 rounded-xl border border-green-200 bg-white">
+      <dl className="divide-y divide-green-100 rounded-xl border border-green-200 bg-white dark:divide-green-800 dark:border-green-800 dark:bg-gray-800">
         <DetailRow label="Trade ID">
-          <span className="break-all font-mono text-xs text-gray-700">
+          <span className="break-all font-mono text-xs text-gray-700 dark:text-gray-300">
             {trade.id}
           </span>
         </DetailRow>
         <DetailRow label="Asset">{assetLabel}</DetailRow>
-        <DetailRow label="Amount">
-          ₦{trade.amount.toLocaleString()}
-        </DetailRow>
+        <DetailRow label="Amount">₦{trade.amount.toLocaleString()}</DetailRow>
         <DetailRow label="Status">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/40 dark:text-green-300">
             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-green-500 inline-block" />
             {trade.status}
           </span>
@@ -203,7 +189,6 @@ function SuccessPanel({ trade }: { trade: TradeOffer }) {
         </DetailRow>
       </dl>
 
-      {/* Actions */}
       <div className="flex flex-col gap-3 sm:flex-row">
         <a
           href="/"
@@ -214,7 +199,7 @@ function SuccessPanel({ trade }: { trade: TradeOffer }) {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="flex-1 inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+          className="flex-1 inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
         >
           Create another listing
         </button>
@@ -223,17 +208,11 @@ function SuccessPanel({ trade }: { trade: TradeOffer }) {
   );
 }
 
-function DetailRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4 px-5 py-3">
-      <dt className="shrink-0 text-xs font-medium text-gray-500">{label}</dt>
-      <dd className="text-right text-sm text-gray-900">{children}</dd>
+      <dt className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">{label}</dt>
+      <dd className="text-right text-sm text-gray-900 dark:text-gray-100">{children}</dd>
     </div>
   );
 }
@@ -244,26 +223,20 @@ function DetailRow({
 
 export default function SellPage() {
   const [authChecked, setAuthChecked] = useState(false);
-
   const [fields, setFields] = useState<FormFields>({
     assetType: "",
     amount: "",
     expiresInHours: 24,
   });
-
-  const [errors, setErrors]           = useState<FieldErrors>({});
-  const [serverError, setServerError] = useState<string | null>(null);
-  const [loading, setLoading]         = useState(false);
+  const [errors, setErrors]             = useState<FieldErrors>({});
+  const [serverError, setServerError]   = useState<string | null>(null);
+  const [loading, setLoading]           = useState(false);
   const [createdTrade, setCreatedTrade] = useState<TradeOffer | null>(null);
 
   const apiUrl = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:3001";
 
-  // -------------------------------------------------------------------------
-  // Auth guard — runs client-side after hydration
-  // -------------------------------------------------------------------------
   useEffect(() => {
     if (!isAuthenticated()) {
-      // Preserve the intended destination so we can redirect back after login
       const returnTo = encodeURIComponent("/sell");
       window.location.href = `/auth/signup?returnTo=${returnTo}`;
       return;
@@ -271,27 +244,18 @@ export default function SellPage() {
     setAuthChecked(true);
   }, []);
 
-  // -------------------------------------------------------------------------
-  // Field handlers
-  // -------------------------------------------------------------------------
-  function handleChange(
-    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) {
+  function handleChange(e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value } = e.target;
     setFields((prev) => ({
       ...prev,
       [name]: name === "expiresInHours" ? parseInt(value, 10) : value,
     }));
-    // Clear the per-field error as the user edits
     if (errors[name as keyof FieldErrors]) {
       setErrors((prev) => ({ ...prev, [name]: undefined }));
     }
     if (serverError) setServerError(null);
   }
 
-  // -------------------------------------------------------------------------
-  // Submit
-  // -------------------------------------------------------------------------
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setServerError(null);
@@ -299,7 +263,6 @@ export default function SellPage() {
     const fieldErrors = validate(fields);
     if (Object.keys(fieldErrors).length > 0) {
       setErrors(fieldErrors);
-      // Move focus to the first invalid field for accessibility
       const firstErrorId = Object.keys(fieldErrors)[0];
       document.getElementById(firstErrorId ?? "")?.focus();
       return;
@@ -331,7 +294,6 @@ export default function SellPage() {
       const data = (await res.json()) as CreateTradeResponse;
 
       if (res.status === 401) {
-        // Token expired — send back to sign-in
         window.location.href = "/auth/signup?returnTo=" + encodeURIComponent("/sell");
         return;
       }
@@ -357,9 +319,6 @@ export default function SellPage() {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Render — gate on auth check to avoid flash of content
-  // -------------------------------------------------------------------------
   if (!authChecked) {
     return (
       <div className="flex items-center justify-center py-32" aria-label="Checking authentication">
@@ -376,24 +335,24 @@ export default function SellPage() {
     <>
       {/* Page header */}
       <div className="mb-8">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-violet-500">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-violet-500 dark:text-violet-400">
           New listing
         </p>
-        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">
+        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-gray-100">
           Sell Airtime or Data
         </h1>
-        <p className="mt-2 text-sm text-gray-500">
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
           Fill in the details below. Your listing will be registered on the
           Stellar escrow contract and visible to buyers immediately.
         </p>
       </div>
 
-      {/* How it works — brief explainer */}
-      <div className="mb-8 flex flex-col gap-2 rounded-xl border border-violet-100 bg-violet-50 px-5 py-4">
-        <p className="text-xs font-semibold uppercase tracking-widest text-violet-600">
+      {/* How it works */}
+      <div className="mb-8 flex flex-col gap-2 rounded-xl border border-violet-100 bg-violet-50 px-5 py-4 dark:border-violet-800 dark:bg-violet-900/20">
+        <p className="text-xs font-semibold uppercase tracking-widest text-violet-600 dark:text-violet-400">
           How it works
         </p>
-        <ol className="mt-1 flex flex-col gap-1 text-sm text-violet-800 list-decimal list-inside">
+        <ol className="mt-1 flex flex-col gap-1 text-sm text-violet-800 list-decimal list-inside dark:text-violet-300">
           <li>Submit this form — your listing goes live on-chain.</li>
           <li>A buyer accepts and deposits funds into escrow.</li>
           <li>Send the airtime / data to the buyer.</li>
@@ -405,7 +364,7 @@ export default function SellPage() {
       <form
         onSubmit={handleSubmit}
         noValidate
-        className="flex flex-col gap-6 rounded-2xl border border-gray-100 bg-white px-8 py-8 shadow-sm"
+        className="flex flex-col gap-6 rounded-2xl border border-gray-100 bg-white px-8 py-8 shadow-sm dark:border-gray-700 dark:bg-gray-800"
       >
         {/* Asset type */}
         <Field
@@ -424,13 +383,9 @@ export default function SellPage() {
             aria-invalid={errors.assetType ? "true" : undefined}
             className={`${inputBase} ${errors.assetType ? inputError : inputNormal} appearance-none bg-[url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")] bg-no-repeat bg-[right_1rem_center]`}
           >
-            <option value="" disabled>
-              Select an asset type…
-            </option>
+            <option value="" disabled>Select an asset type…</option>
             {ASSET_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
         </Field>
@@ -445,7 +400,7 @@ export default function SellPage() {
           <div className="relative">
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-sm font-semibold text-gray-400"
+              className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-sm font-semibold text-gray-400 dark:text-gray-500"
             >
               ₦
             </span>
@@ -480,8 +435,8 @@ export default function SellPage() {
                 key={opt.value}
                 className={`flex cursor-pointer items-center justify-center rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
                   fields.expiresInHours === opt.value
-                    ? "border-violet-500 bg-violet-50 text-violet-700"
-                    : "border-gray-200 bg-white text-gray-600 hover:border-violet-300 hover:text-violet-600"
+                    ? "border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-500"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-violet-300 hover:text-violet-600 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400 dark:hover:border-violet-500 dark:hover:text-violet-400"
                 } ${loading ? "cursor-not-allowed opacity-50" : ""}`}
               >
                 <input
@@ -499,28 +454,26 @@ export default function SellPage() {
           </div>
         </Field>
 
-        {/* Divider */}
-        <hr className="border-gray-100" />
+        <hr className="border-gray-100 dark:border-gray-700" />
 
         {/* Summary preview */}
         {fields.assetType && fields.amount && parseFloat(fields.amount) > 0 && (
           <div
             aria-live="polite"
-            className="rounded-xl border border-gray-100 bg-gray-50 px-5 py-4 text-sm text-gray-600"
+            className="rounded-xl border border-gray-100 bg-gray-50 px-5 py-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-700/50 dark:text-gray-400"
           >
-            <p className="font-medium text-gray-700">Listing preview</p>
+            <p className="font-medium text-gray-700 dark:text-gray-300">Listing preview</p>
             <p className="mt-1">
               Selling{" "}
-              <strong className="text-gray-900">
-                {ASSET_OPTIONS.find((o) => o.value === fields.assetType)?.label ??
-                  fields.assetType}
+              <strong className="text-gray-900 dark:text-gray-100">
+                {ASSET_OPTIONS.find((o) => o.value === fields.assetType)?.label ?? fields.assetType}
               </strong>{" "}
               for{" "}
-              <strong className="text-gray-900">
+              <strong className="text-gray-900 dark:text-gray-100">
                 ₦{parseFloat(fields.amount).toLocaleString()}
               </strong>
               , expires in{" "}
-              <strong className="text-gray-900">
+              <strong className="text-gray-900 dark:text-gray-100">
                 {EXPIRY_OPTIONS.find((o) => o.value === fields.expiresInHours)?.label}
               </strong>
               .
@@ -532,7 +485,7 @@ export default function SellPage() {
         {serverError && (
           <div
             role="alert"
-            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
           >
             {serverError}
           </div>
@@ -542,7 +495,7 @@ export default function SellPage() {
         <button
           type="submit"
           disabled={loading}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-violet-300"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-violet-300 dark:focus-visible:ring-offset-gray-800 dark:disabled:bg-violet-800"
         >
           {loading ? (
             <>
