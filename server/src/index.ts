@@ -6,6 +6,7 @@ import morgan from "morgan";
 import tradesRouter from "./routes/trades";
 import authRouter from "./routes/auth";
 import walletRouter from "./routes/wallet";
+import profileRouter from "./routes/profile";
 
 // ---------------------------------------------------------------------------
 // Environment validation
@@ -74,6 +75,9 @@ app.use("/api/trades", tradesRouter);
 
 // Wallet routes (Stellar public key + balance)
 app.use("/api/wallet", walletRouter);
+
+// Profile routes (user metadata + trade history)
+app.use("/api/profile", profileRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler
