@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
-import { ThemeProvider } from "next-themes";
+import Navbar from "../components/Navbar";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -10,36 +10,20 @@ export const metadata: Metadata = {
 };
 
 /**
- * Root layout — wraps every page in the App Router hierarchy.
+ * Root layout — mounts the shared Navbar on every page.
  *
- * ThemeProvider (next-themes) manages the `dark` class on <html>.
- * `attribute="class"` — adds/removes `dark` class on the <html> element.
- * `defaultTheme="system"` — on first visit, respects the OS preference.
- * `enableSystem` — wires up the `prefers-color-scheme` media query.
- * `disableTransitionOnChange` — prevents a flash of transitioning colours
- *   when the page first loads (avoids FOUC for colour transitions).
+ * The Navbar handles its own auth-state detection client-side, so this
+ * layout can remain a Server Component (no "use client" needed here).
  *
- * next-themes also injects a tiny inline <script> before the first paint
- * that reads localStorage and applies the correct class synchronously,
- * which completely prevents any flash of unstyled content (FOUC).
+ * suppressHydrationWarning is set on <html> to accommodate the theme
+ * toggling script injected by next-themes (when that branch is merged).
  */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      {/*
-        suppressHydrationWarning is required on <html> because next-themes
-        mutates the `class` attribute server-side vs client-side, which
-        would otherwise trigger a React hydration warning.
-      */}
-      <body>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-        </ThemeProvider>
+      <body className="bg-gray-50 text-gray-900 antialiased dark:bg-gray-900 dark:text-gray-100">
+        <Navbar />
+        {children}
       </body>
     </html>
   );

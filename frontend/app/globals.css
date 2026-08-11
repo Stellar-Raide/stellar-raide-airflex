@@ -2,12 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
-  Theme colour tokens.
-  The `dark` class on <html> (set by ThemeToggle / next-themes) switches
-  every CSS variable to its dark-mode counterpart, so the rest of the app
-  just uses Tailwind `dark:` variants.
-*/
 :root {
   color-scheme: light;
 }

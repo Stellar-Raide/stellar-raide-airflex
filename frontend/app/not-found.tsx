@@ -1,39 +1,8 @@
-/**
- * not-found.tsx — Global 404 page (Next.js App Router convention)
- */
-
 export default function NotFound() {
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col dark:bg-gray-900">
-      {/* Nav */}
-      <header className="sticky top-0 z-10 border-b border-gray-100 bg-white/80 backdrop-blur-md dark:border-gray-700 dark:bg-gray-900/80">
-        <nav
-          className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8"
-          aria-label="Primary"
-        >
-          <a
-            href="/"
-            className="flex items-center gap-2 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
-          >
-            <span aria-hidden="true" className="text-2xl">🌀</span>
-            <span className="text-xl font-extrabold tracking-tight text-violet-700 dark:text-violet-400">
-              AirFlex
-            </span>
-          </a>
-
-          <a
-            href="/auth/signup"
-            className="inline-flex items-center rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
-          >
-            Sign In
-          </a>
-        </nav>
-      </header>
-
-      {/* 404 content */}
+    <div className="flex flex-1 flex-col bg-gray-50 dark:bg-gray-900">
       <main className="flex flex-1 items-center justify-center px-4 py-16 sm:px-6">
         <div className="w-full max-w-lg text-center">
-          {/* Large 404 display */}
           <p
             aria-hidden="true"
             className="text-[8rem] font-extrabold leading-none tracking-tighter text-gray-100 select-none dark:text-gray-800"
@@ -48,11 +17,10 @@ export default function NotFound() {
           </h1>
 
           <p className="mt-3 text-sm text-gray-500 leading-relaxed max-w-sm mx-auto dark:text-gray-400">
-            The page you&apos;re looking for doesn&apos;t exist or has been
-            moved. Check the URL or head back to the marketplace.
+            The page you&apos;re looking for doesn&apos;t exist or has been moved.
+            Check the URL or head back to the marketplace.
           </p>
 
-          {/* Actions */}
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
             <a
               href="/"
@@ -69,7 +37,6 @@ export default function NotFound() {
             </a>
           </div>
 
-          {/* Quick links */}
           <div className="mt-10 border-t border-gray-100 pt-8 dark:border-gray-700">
             <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
               You might be looking for
@@ -95,7 +62,6 @@ export default function NotFound() {
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-gray-100 bg-white dark:border-gray-700 dark:bg-gray-800">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-gray-400 dark:text-gray-500">
@@ -109,9 +75,6 @@ export default function NotFound() {
               className="hover:text-gray-600 transition-colors dark:hover:text-gray-300"
             >
               GitHub
-            </a>
-            <a href="/auth/signup" className="hover:text-gray-600 transition-colors dark:hover:text-gray-300">
-              Sign In
             </a>
           </div>
         </div>

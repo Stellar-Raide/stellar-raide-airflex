@@ -4,6 +4,10 @@ import pool from "../db";
 import { authenticate, AuthenticatedRequest } from "../middleware/authenticate";
 import { validate } from "../middleware/validate";
 import { createListing, depositToEscrow } from "../services/stellar";
+import {
+  triggerVerification,
+  VerificationError,
+} from "../services/tradeVerification";
 import type { TradeOffer } from "../types/trade";
 import {
   createTradeSchema,
@@ -210,6 +214,53 @@ router.post(
     );
 
     res.status(200).json({ data: updated[0] });
+  })
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/trades/:id/confirm-delivery  (authenticated — seller only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Seller calls this endpoint to signal that they have delivered the
+ * airtime / data and the escrow payment should be released.
+ *
+ * The endpoint responds with 202 Accepted immediately. Verification and the
+ * Soroban `release_payment` call run asynchronously in the background so the
+ * seller's request never times out waiting for on-chain confirmation.
+ *
+ * Flow:
+ *  1. Authenticate + validate trade ownership synchronously.
+ *  2. Return 202 to the seller.
+ *  3. tradeVerification.triggerVerification() runs in the background:
+ *       - Calls release_payment on the escrow contract (up to 3 attempts).
+ *       - On success: updates DB to Completed, notifies parties via SSE.
+ *       - On failure: escalates to Disputed, fires SSE admin alert.
+ */
+router.post(
+  "/:id/confirm-delivery",
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { sub: sellerId } = (req as AuthenticatedRequest).user;
+
+    try {
+      // triggerVerification validates synchronously then fires async work
+      await triggerVerification(id, sellerId);
+    } catch (err) {
+      if (err instanceof VerificationError) {
+        res.status(err.statusCode).json({ error: err.message });
+        return;
+      }
+      throw err; // Re-throw unexpected errors to global handler
+    }
+
+    res.status(202).json({
+      message:
+        "Delivery confirmation received. Payment release is being processed — " +
+        "you will be notified via the event stream when complete.",
+      tradeId: id,
+    });
   })
 );
 
