@@ -1,5 +1,5 @@
 /** Possible states a trade offer moves through */
-export type TradeStatus = "Active" | "Locked" | "Completed" | "Cancelled";
+export type TradeStatus = "Active" | "Locked" | "Completed" | "Cancelled" | "Disputed";
 
 /** Shape of a row returned from the trade_offers table */
 export interface TradeOffer {
