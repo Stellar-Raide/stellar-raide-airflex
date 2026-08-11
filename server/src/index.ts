@@ -6,6 +6,8 @@ import morgan from "morgan";
 import tradesRouter from "./routes/trades";
 import authRouter from "./routes/auth";
 import walletRouter from "./routes/wallet";
+import profileRouter from "./routes/profile";
+import eventsRouter from "./routes/events";
 
 // ---------------------------------------------------------------------------
 // Environment validation
@@ -16,6 +18,7 @@ const REQUIRED_ENV_VARS = [
   "DATABASE_URL",
   "ESCROW_CONTRACT_ADDRESS",
   "ENCRYPTION_KEY",
+  "STELLAR_SERVER_SECRET",
 ] as const;
 
 const missingVars = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
@@ -74,6 +77,12 @@ app.use("/api/trades", tradesRouter);
 
 // Wallet routes (Stellar public key + balance)
 app.use("/api/wallet", walletRouter);
+
+// Profile routes (user metadata + trade history)
+app.use("/api/profile", profileRouter);
+
+// SSE real-time event stream
+app.use("/api/events", eventsRouter);
 
 // ---------------------------------------------------------------------------
 // Global error handler

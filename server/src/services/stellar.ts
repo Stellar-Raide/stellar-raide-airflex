@@ -271,9 +271,69 @@ export async function depositToEscrow(params: {
   return response.hash;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+/**
+ * Calls the smart contract's `release_payment` function.
+ *
+ * This is the oracle step — called by the server after delivery is confirmed.
+ * The server signing key (STELLAR_SERVER_SECRET) must be the admin address
+ * that was set during contract initialisation.
+ *
+ * SECURITY: The secret key is read once from env, used to sign the transaction,
+ * and the Keypair object is not exported or logged anywhere.
+ *
+ * @param contractTradeId  The on-chain trade ID (u64) stored in contract_listing_id
+ * @returns Transaction hash of the confirmed release
+ */
+export async function releasePayment(contractTradeId: string): Promise<string> {
+  const contractAddress = process.env["ESCROW_CONTRACT_ADDRESS"];
+  if (!contractAddress) {
+    throw new Error("ESCROW_CONTRACT_ADDRESS environment variable is not set");
+  }
+
+  const serverSecret = process.env["STELLAR_SERVER_SECRET"];
+  if (!serverSecret) {
+    throw new Error("STELLAR_SERVER_SECRET environment variable is not set");
+  }
+
+  // Derive keypair from server secret — never log this object
+  const keypair = Keypair.fromSecret(serverSecret);
+  const serverPublicKey = keypair.publicKey();
+
+  const account = await horizonServer.loadAccount(serverPublicKey);
+  const contract = new Contract(contractAddress);
+
+  // The contract expects a u64 trade ID
+  const tradeIdU64 = BigInt(contractTradeId);
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      contract.call(
+        "release_payment",
+        nativeToScVal(tradeIdU64, { type: "u64" })
+      )
+    )
+    .setTimeout(30)
+    .build();
+
+  const preparedTx = await sorobanServer.prepareTransaction(tx);
+  preparedTx.sign(keypair);
+
+  const response = await sorobanServer.sendTransaction(preparedTx);
+
+  if (response.status === "ERROR") {
+    throw new Error(
+      `Contract release_payment failed: ${JSON.stringify(response.errorResult)}`
+    );
+  }
+
+  await pollForResult(response.hash);
+  return response.hash;
+}
+
+
 
 /**
  * Polls Soroban RPC until a submitted transaction reaches a terminal state.
