@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
 import pool from "../db";
 import { authenticate, AuthenticatedRequest } from "../middleware/authenticate";
@@ -16,21 +16,9 @@ import {
   type CreateTradeInput,
   type BuyTradeInput,
 } from "../schemas";
+import { asyncHandler } from "../utils/asyncHandler";
 
 const router = Router();
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Wraps an async route handler so unhandled rejections reach the error middleware */
-function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
-) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    fn(req, res, next).catch(next);
-  };
-}
 
 // ---------------------------------------------------------------------------
 // GET /api/trades

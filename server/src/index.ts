@@ -1,5 +1,5 @@
 import "dotenv/config";
-import express, { Request, Response, NextFunction } from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -8,6 +8,8 @@ import authRouter from "./routes/auth";
 import walletRouter from "./routes/wallet";
 import profileRouter from "./routes/profile";
 import eventsRouter from "./routes/events";
+import logger from "./utils/logger";
+import { errorHandler } from "./middleware/errorHandler";
 
 // ---------------------------------------------------------------------------
 // Environment validation
@@ -24,6 +26,7 @@ const REQUIRED_ENV_VARS = [
 const missingVars = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
 
 if (missingVars.length > 0) {
+  // Use console.error here — logger may not be fully initialised yet
   console.error(
     `[startup] Missing required environment variables: ${missingVars.join(", ")}\n` +
       `Copy server/.env.example to server/.env and fill in the values.`
@@ -85,22 +88,19 @@ app.use("/api/profile", profileRouter);
 app.use("/api/events", eventsRouter);
 
 // ---------------------------------------------------------------------------
-// Global error handler
+// Global error handler  (must be last)
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error("[error]", err.stack ?? err.message);
-  res.status(500).json({ error: "Internal server error" });
-});
+app.use(errorHandler);
 
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 
 app.listen(PORT, () => {
-  console.log(
-    `[server] AirFlex API running on port ${PORT} (${process.env["NODE_ENV"] ?? "development"})`
+  logger.info(
+    { port: PORT, env: process.env["NODE_ENV"] ?? "development" },
+    "AirFlex API started"
   );
 });
 

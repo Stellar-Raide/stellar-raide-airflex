@@ -1,9 +1,10 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import pool from "../db";
 import { generateAndFundWallet } from "../services/stellar";
 import { validate } from "../middleware/validate";
+import { asyncHandler } from "../utils/asyncHandler";
 import {
   requestOtpSchema,
   verifyOtpSchema,
@@ -12,18 +13,6 @@ import {
 } from "../schemas";
 
 const router = Router();
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
-) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    fn(req, res, next).catch(next);
-  };
-}
 
 /** Send OTP via Termii SMS API */
 async function sendOtp(phone: string, otp: string): Promise<void> {

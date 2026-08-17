@@ -1,21 +1,10 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router } from "express";
 import pool from "../db";
 import { authenticate, AuthenticatedRequest } from "../middleware/authenticate";
 import { getWalletBalance } from "../services/stellar";
+import { asyncHandler } from "../utils/asyncHandler";
 
 const router = Router();
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
-) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    fn(req, res, next).catch(next);
-  };
-}
 
 // ---------------------------------------------------------------------------
 // GET /api/wallet  (authenticated)
