@@ -1,21 +1,10 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router } from "express";
 import pool from "../db";
 import { authenticate, AuthenticatedRequest } from "../middleware/authenticate";
 import type { TradeOffer, TradeStatus } from "../types/trade";
+import { asyncHandler } from "../utils/asyncHandler";
 
 const router = Router();
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
-) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    fn(req, res, next).catch(next);
-  };
-}
 
 /** Mask a phone number — show country code + last 4 digits only: +234 *** *** 7890 */
 function maskPhone(phone: string): string {
