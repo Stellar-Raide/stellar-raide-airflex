@@ -1,0 +1,115 @@
+---
+title: Contributing
+---
+
+import { Callout, Steps } from "nextra/components";
+
+# Contributing
+
+This page covers contributing to **this documentation site**
+(`apps/docs-site`). For the rest of the project — branching strategy, commit
+conventions, PR process, and coding standards — see the root
+[`CONTRIBUTING.md`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/CONTRIBUTING.md).
+
+## Running the site locally
+
+```bash
+cd apps/docs-site
+npm install
+npm run dev
+```
+
+Opens on `http://localhost:3002` with hot reload.
+
+## Adding a hand-written page
+
+<Steps>
+
+### Create the MDX file
+
+Add a `.mdx` file under `pages/`, e.g. `pages/getting-started.mdx` or a new
+page under an existing section like `pages/deployment/staging.mdx`.
+
+### Add frontmatter
+
+```mdx
+---
+title: My New Page
+---
+
+# My New Page
+
+Content here.
+```
+
+### Register it in `_meta.json`
+
+Each folder under `pages/` has a `_meta.json` controlling sidebar order and
+labels. Add your new page's filename (without `.mdx`) as a key:
+
+```json
+{
+  "index": "Overview",
+  "my-new-page": "My New Page"
+}
+```
+
+</Steps>
+
+## Regenerating generated docs
+
+Two sections of this site are **generated, not hand-written** — don't edit
+their `.mdx` files directly, since the next generator run overwrites them.
+
+<Callout type="warning">
+  Edit the source (the OpenAPI spec or the Rust doc comments), not the
+  generated MDX in `pages/api-reference/` or `pages/contract-reference/`.
+</Callout>
+
+### API Reference
+
+Source of truth: [`openapi/openapi.json`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/apps/docs-site/openapi/openapi.json).
+
+1. Edit `openapi/openapi.json` to match the change in `server/src/routes/`
+   or `server/src/schemas/`.
+2. Run:
+   ```bash
+   npm run generate:api
+   ```
+3. Commit both the spec change and the regenerated files under
+   `pages/api-reference/`.
+
+### Contract Reference
+
+Source of truth: the `///` doc comments on each `pub fn` inside a
+`#[contractimpl] impl { ... }` block in `contracts/*/src/lib.rs`.
+
+1. Edit the doc comment in the Rust source.
+2. Run:
+   ```bash
+   npm run generate:contracts
+   ```
+3. Commit both the Rust change and the regenerated file under
+   `pages/contract-reference/`.
+
+New contract crates are picked up automatically — add
+`contracts/<name>/src/lib.rs` with documented `pub fn` items and the next
+`npm run generate:contracts` run creates `pages/contract-reference/<name>.mdx`
+for you. If a hand-written placeholder already exists for that contract
+(see [`marketplace.mdx`](/contract-reference/marketplace) or
+[`token.mdx`](/contract-reference/token)), delete it once the generated
+version lands — the generator won't overwrite a page it didn't create.
+
+<Callout type="default">
+  `npm run dev` and `npm run build` both run the generators automatically
+  (via `predev` / `prebuild` in `package.json`), so CI and local dev always
+  build against the latest spec and contract source.
+</Callout>
+
+## Search
+
+The search bar in the top nav is Nextra's built-in Flexsearch index — it's
+generated automatically at build time from every page's headings and
+content. No manual indexing step is required; if a new page isn't showing
+up in search results, rebuild (`npm run build`) rather than looking for a
+config flag.

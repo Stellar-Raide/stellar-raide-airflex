@@ -48,6 +48,8 @@ tolerated. When in doubt, default to kindness.
 
 ```
 stellar-raide-stellar-raide-airflex/
+├── apps/
+│   └── docs-site/       # Public docs site (Next.js + Nextra) — docs.stellar-raide-stellar-raide-airflex.io
 ├── contracts/          # Soroban smart contracts (Rust)
 │   └── escrow/         # Escrow contract
 ├── docs/               # Project documentation

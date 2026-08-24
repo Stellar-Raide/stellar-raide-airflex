@@ -1,0 +1,58 @@
+---
+title: API Reference
+---
+
+# API Reference
+
+Base URL (development): `http://localhost:3001`
+
+All request and response bodies are JSON. Authenticated endpoints (marked 🔒)
+require a `Bearer` JWT in the `Authorization` header:
+
+```
+Authorization: Bearer <jwt>
+```
+
+The pages in this section are **generated from [`openapi/openapi.json`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/apps/docs-site/openapi/openapi.json)**
+by `scripts/generate-api-reference.mjs` — see [Contributing](/contributing#regenerating-generated-docs)
+for how to keep it in sync with the server. You can also fetch the raw spec
+directly at [`/openapi.json`](/openapi.json) and load it into Postman,
+Insomnia, or Redoc.
+
+## Sections
+
+- [Health](/api-reference/health) — server status
+- [Auth](/api-reference/auth) — phone-number OTP login
+- [Trades](/api-reference/trades) — create, browse, and settle trade offers
+- [Wallet](/api-reference/wallet) — Stellar balance and Naira withdrawals
+- [Profile](/api-reference/profile) — authenticated user profile and history
+- [Events](/api-reference/events) — real-time trade updates over SSE
+
+## Error format
+
+All errors follow this shape:
+
+```json
+{ "error": "Human-readable message" }
+```
+
+Validation errors include a `details` field keyed by input field name:
+
+```json
+{
+  "error": "Validation failed",
+  "details": { "amount": ["Number must be greater than 0"] }
+}
+```
+
+## Status codes
+
+| Code | Meaning |
+|------|---------|
+| `200` | OK |
+| `201` | Created |
+| `202` | Accepted — processing continues asynchronously |
+| `400` | Bad request — validation failed or a business rule was violated |
+| `401` | Unauthorized — missing or invalid JWT |
+| `404` | Not found |
+| `502` | Upstream provider error (Horizon, Paystack, Termii) |

@@ -1,0 +1,95 @@
+---
+title: REST Client
+---
+
+import { Callout, Tabs } from "nextra/components";
+
+# REST Client
+
+The full endpoint list, request/response shapes, and error format are in the
+[API Reference](/api-reference) — this page just shows the integration
+pattern: authenticate once, then call the trade endpoints.
+
+## 1. Authenticate
+
+<Tabs items={["fetch", "axios"]}>
+  <Tabs.Tab>
+```ts
+const API_URL = "http://localhost:3001";
+
+await fetch(`${API_URL}/api/auth/request-otp`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ phone: "+2348012345678" }),
+});
+
+const res = await fetch(`${API_URL}/api/auth/verify-otp`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ phone: "+2348012345678", otp: "123456" }),
+});
+const { token } = await res.json();
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```ts
+import axios from "axios";
+
+const api = axios.create({ baseURL: "http://localhost:3001" });
+
+await api.post("/api/auth/request-otp", { phone: "+2348012345678" });
+
+const { data } = await api.post("/api/auth/verify-otp", {
+  phone: "+2348012345678",
+  otp: "123456",
+});
+const { token } = data;
+```
+  </Tabs.Tab>
+</Tabs>
+
+## 2. Call authenticated endpoints
+
+Attach the token from step 1 as a `Bearer` header on every 🔒 endpoint listed
+in the [API Reference](/api-reference):
+
+```ts
+const res = await fetch(`${API_URL}/api/trades`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  },
+  body: JSON.stringify({
+    assetType: "MTN_AIRTIME",
+    amount: 500,
+    expiresInHours: 24,
+  }),
+});
+const { data: trade } = await res.json();
+```
+
+## 3. Listen for trade status updates
+
+[`GET /api/events`](/api-reference/events) is a persistent Server-Sent
+Events stream. The browser's `EventSource` API doesn't support custom
+headers directly, so pass the token as a query param or via a cookie-based
+session in production — for local testing with a Node client you can set
+the header directly:
+
+```ts
+import { EventSource } from "eventsource"; // Node polyfill; browsers use the built-in global
+
+const es = new EventSource(`${API_URL}/api/events`, {
+  headers: { Authorization: `Bearer ${token}` },
+});
+
+es.addEventListener("trade_completed", (e) => {
+  console.log("Trade completed:", JSON.parse(e.data));
+});
+```
+
+<Callout type="info">
+  All error responses share one shape — see [Error format](/api-reference#error-format)
+  — so a single response interceptor / error handler covers every endpoint.
+</Callout>

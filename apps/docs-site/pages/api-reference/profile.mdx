@@ -1,0 +1,96 @@
+---
+title: Profile
+---
+
+import { Callout } from "nextra/components";
+
+# Profile
+
+<Callout type="info">
+  Generated from [`openapi/openapi.json`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/apps/docs-site/openapi/openapi.json).
+  Run `npm run generate:api` in `apps/docs-site` after changing the spec to
+  refresh this page. The raw spec is also served at
+  [`/openapi.json`](/openapi.json).
+</Callout>
+
+Authenticated user profile and trade history.
+
+## `GET /api/profile` 🔒
+
+**Get authenticated profile**
+
+Returns profile metadata for the authenticated user, including a masked phone number and completed-trade count.
+
+**Responses**
+
+**`200`** — OK
+
+```json
+{
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "maskedPhone": "+234 *** *** 5678",
+    "createdAt": "2026-08-24T10:00:00.000Z",
+    "totalTradesCompleted": 1,
+    "stellarPublicKey": "string"
+  }
+}
+```
+
+**`404`** — User not found
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+
+## `GET /api/profile/trades` 🔒
+
+**Get trade history**
+
+Returns the paginated trade history for the authenticated user, covering trades where the user was the seller or the buyer.
+
+**Parameters**
+
+| Name | In | Type | Notes |
+|------|----|------|-------|
+| `page` | query | integer | optional (default `1`) |
+| `limit` | query | integer | optional (max 50, default `10`) |
+| `status` | query | string | optional (default `All`, one of `All`, `Active`, `Locked`, `Completed`, `Cancelled`) |
+
+
+**Responses**
+
+**`200`** — OK
+
+```json
+{
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "seller_id": "550e8400-e29b-41d4-a716-446655440000",
+      "buyer_id": "550e8400-e29b-41d4-a716-446655440000",
+      "asset_type": "MTN_AIRTIME",
+      "amount": 500,
+      "status": "Active",
+      "contract_listing_id": "string",
+      "escrow_tx_hash": "string",
+      "expires_at": "2026-08-24T10:00:00.000Z",
+      "created_at": "2026-08-24T10:00:00.000Z",
+      "updated_at": "2026-08-24T10:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 42,
+    "totalPages": 3
+  }
+}
+```
+
+---
+

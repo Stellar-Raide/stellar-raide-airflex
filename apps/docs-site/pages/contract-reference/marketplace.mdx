@@ -1,0 +1,24 @@
+---
+title: Marketplace Contract
+---
+
+import { Callout } from "nextra/components";
+
+# Marketplace Contract
+
+<Callout type="warning">
+  This contract does not exist in `contracts/` yet — only the
+  [Escrow](/contract-reference/escrow) contract is currently implemented.
+  This page is a placeholder so the site structure matches the intended
+  contract set.
+</Callout>
+
+The marketplace contract is expected to handle listing discovery and
+matching logic that today lives partly in the [`GET /api/trades`](/api-reference/trades)
+endpoint and the `trade_offers` table (see [Getting Started](/getting-started#set-up-the-database)).
+Moving that logic on-chain is tracked on the project roadmap.
+
+Once `contracts/marketplace/src/lib.rs` exists with `///`-documented `pub fn`
+items, running `npm run generate:contracts` in `apps/docs-site` will replace
+this file automatically with the generated reference — remove this
+hand-written placeholder at that point.
