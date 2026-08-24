@@ -3,11 +3,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import tradesRouter from "./routes/trades";
-import authRouter from "./routes/auth";
-import walletRouter from "./routes/wallet";
-import profileRouter from "./routes/profile";
-import eventsRouter from "./routes/events";
+import { registerRoutes } from "./routes";
 import logger from "./utils/logger";
 import { errorHandler } from "./middleware/errorHandler";
 
@@ -72,20 +68,8 @@ app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Auth routes (OTP signup + verification)
-app.use("/api/auth", authRouter);
-
-// Trade marketplace routes
-app.use("/api/trades", tradesRouter);
-
-// Wallet routes (Stellar public key + balance)
-app.use("/api/wallet", walletRouter);
-
-// Profile routes (user metadata + trade history)
-app.use("/api/profile", profileRouter);
-
-// SSE real-time event stream
-app.use("/api/events", eventsRouter);
+// Register all API routes
+registerRoutes(app);
 
 // ---------------------------------------------------------------------------
 // Global error handler  (must be last)

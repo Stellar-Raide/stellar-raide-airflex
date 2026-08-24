@@ -22,7 +22,8 @@
     "pino": "9.3.2",
     "pino-pretty": "11.2.1",
     "uuid": "10.0.0",
-    "zod": "3.23.8"
+    "zod": "3.23.8",
+    "@stellar-raide-stellar-raide-airflex/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/cors": "2.8.17",
