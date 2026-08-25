@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import Navbar from "../components/Navbar";
+import { AuthProvider } from "./context/AuthContext";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -10,10 +11,12 @@ export const metadata: Metadata = {
 };
 
 /**
- * Root layout — mounts the shared Navbar on every page.
+ * Root layout — mounts the shared Navbar on every page and provides
+ * application-wide authentication state via AuthProvider.
  *
- * The Navbar handles its own auth-state detection client-side, so this
- * layout can remain a Server Component (no "use client" needed here).
+ * AuthProvider is a "use client" component, but this layout can stay a
+ * Server Component: Next.js allows importing client components from server
+ * components as long as we don't call client-only hooks here.
  *
  * suppressHydrationWarning is set on <html> to accommodate the theme
  * toggling script injected by next-themes (when that branch is merged).
@@ -22,8 +25,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="bg-gray-50 text-gray-900 antialiased dark:bg-gray-900 dark:text-gray-100">
-        <Navbar />
-        {children}
+        <AuthProvider>
+          <Navbar />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );
