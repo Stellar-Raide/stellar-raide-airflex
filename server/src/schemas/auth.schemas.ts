@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Schema for POST /api/auth/request-otp
+ * Schema for POST /api/v1/auth/request-otp
  *
  * Accepts international E.164-style phone numbers and the common Nigerian
  * local format (0XXXXXXXXXX). Total digits: 10–15.
@@ -11,7 +11,7 @@ export const requestOtpSchema = z.object({
     .string({ required_error: "phone is required" })
     .trim()
     .regex(
-      /^\+?[1-9]\d{9,14}$/,
+      /^(?:0\d{10}|\+?[1-9]\d{9,14})$/,
       "Enter a valid phone number (e.g. +2348012345678 or 08012345678)"
     ),
 });
@@ -21,7 +21,7 @@ export type RequestOtpInput = z.infer<typeof requestOtpSchema>;
 // ---------------------------------------------------------------------------
 
 /**
- * Schema for POST /api/auth/verify-otp
+ * Schema for POST /api/v1/auth/verify-otp
  */
 export const verifyOtpSchema = z.object({
   phone: z

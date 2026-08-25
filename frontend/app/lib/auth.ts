@@ -54,7 +54,7 @@ export function isAuthenticated(): boolean {
 // User
 // ---------------------------------------------------------------------------
 
-/** Persist basic user info returned from /api/auth/verify-otp. */
+/** Persist basic user info returned from /api/v1/auth/verify-otp. */
 export function saveUser(user: StoredUser): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(USER_KEY, JSON.stringify(user));
@@ -80,7 +80,7 @@ export function getUser(): StoredUser | null {
  * Returns the Authorization header value ready for use in fetch calls.
  *
  * @example
- * fetch("/api/trades", { headers: { Authorization: bearerHeader() ?? "" } })
+ * fetch("/api/v1/trades", { headers: { Authorization: bearerHeader() ?? "" } })
  */
 export function bearerHeader(): string | null {
   const token = getToken();

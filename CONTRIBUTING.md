@@ -20,9 +20,10 @@ Please read this guide before opening issues or pull requests.
 8. [Pull Request Process](#pull-request-process)
 9. [Coding Standards](#coding-standards)
 10. [Smart Contract Guidelines](#smart-contract-guidelines)
-11. [Reporting Bugs](#reporting-bugs)
-12. [Suggesting Features](#suggesting-features)
-13. [Security Vulnerabilities](#security-vulnerabilities)
+11. [API Versioning Policy](#api-versioning-policy)
+12. [Reporting Bugs](#reporting-bugs)
+13. [Suggesting Features](#suggesting-features)
+14. [Security Vulnerabilities](#security-vulnerabilities)
 
 ---
 
@@ -316,6 +317,45 @@ without redeployment.
 - Update `docs/smart-contract.md` with any new or changed functions.
 - If redeployment is required, add the new contract address to `server/.env.example`
   and document it in the PR description.
+
+---
+
+## API Versioning Policy
+
+All API routes are prefixed with a version identifier: `/api/v1/`.
+This makes it possible to introduce breaking changes in a future `/api/v2/`
+without disrupting existing clients.
+
+### Rules
+
+| Change type | Version impact | Action |
+|------------|---------------|--------|
+| **Breaking** — removing or renaming fields, changing status codes, altering semantics | New version required | Introduce `/api/v2/` prefix; deprecate and eventually sunset the old version |
+| **Additive** — new optional fields, new endpoints, new optional query params | No new version | Ship under the same `/api/v1/` prefix |
+
+### X-Api-Version header
+
+Every HTTP response from the server includes:
+
+```
+X-Api-Version: 1
+```
+
+Clients may use this header to programmatically identify the API version
+without inspecting the URL path.
+
+### Deprecation process
+
+1. Announce the deprecation in a GitHub Issue / Release Notes.
+2. Add a `Deprecation` and `Sunset` response header to the old version endpoints.
+3. Give consumers a reasonable migration window (minimum 3 months).
+4. Remove the old version after the sunset date.
+
+### OpenAPI specification
+
+The canonical OpenAPI 3.0 spec lives at [`docs/openapi.yaml`](./docs/openapi.yaml).
+Update it whenever you add or modify an endpoint. The spec is the contract
+between the server and all consumers (frontend, mobile, third-party integrations).
 
 ---
 

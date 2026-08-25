@@ -2,6 +2,10 @@
 
 Base URL: `http://localhost:3001` (development)
 
+All API endpoints are prefixed with `/api/v1/`. Every response includes an
+`X-Api-Version: 1` header. See [CONTRIBUTING.md](../CONTRIBUTING.md#api-versioning-policy)
+for the full versioning policy.
+
 All request and response bodies are JSON. Authenticated endpoints require a
 `Bearer` JWT in the `Authorization` header.
 
@@ -43,15 +47,22 @@ Returns server status. No authentication required.
 ```json
 {
   "status": "ok",
+  "version": "1.0.0",
   "timestamp": "2026-08-02T10:00:00.000Z"
 }
 ```
+
+**Response headers**
+
+| Header | Value | Description |
+|--------|-------|-------------|
+| `X-Api-Version` | `1` | Present on every API response |
 
 ---
 
 ## Trades
 
-### `GET /api/trades`
+### `GET /api/v1/trades`
 
 Returns paginated active trade listings. No authentication required.
 
@@ -101,7 +112,7 @@ Returns paginated active trade listings. No authentication required.
 
 ---
 
-### `POST /api/trades` 🔒
+### `POST /api/v1/trades` 🔒
 
 Creates a new trade offer. Registers the listing on the Soroban escrow contract
 and stores the record in PostgreSQL.
@@ -161,7 +172,7 @@ and stores the record in PostgreSQL.
 
 ---
 
-### `GET /api/trades/:id`
+### `GET /api/v1/trades/:id`
 
 Returns a single trade offer by ID. No authentication required.
 
@@ -199,7 +210,7 @@ Returns a single trade offer by ID. No authentication required.
 
 ---
 
-### `POST /api/trades/:id/buy` 🔒
+### `POST /api/v1/trades/:id/buy` 🔒
 
 Locks the buyer's escrow funds on-chain by calling `deposit_to_escrow` on the
 Soroban contract. Updates the trade status to `Locked`.

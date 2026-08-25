@@ -3,7 +3,7 @@ import { Response } from "express";
 /**
  * sseEmitter.ts — Lightweight Server-Sent Events (SSE) hub.
  *
- * Each authenticated client opens GET /api/events and receives a persistent
+ * Each authenticated client opens GET /api/v1/events and receives a persistent
  * text/event-stream connection. The server pushes trade status change events
  * without needing the client to poll.
  *
@@ -14,7 +14,7 @@ import { Response } from "express";
  *
  * Usage
  * -----
- *  // Register a client connection (called from the /api/events route):
+ *  // Register a client connection (called from the /api/v1/events route):
  *  SseEmitter.addClient(userId, res);
  *
  *  // Push an event to specific users (called from tradeVerification):

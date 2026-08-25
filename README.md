@@ -131,14 +131,14 @@ Server runs on `http://localhost:3001`.
 
 ```bash
 curl http://localhost:3001/health
-# → {"status":"ok","timestamp":"..."}
+# → {"status":"ok","version":"1.0.0","timestamp":"..."}
 ```
 
 ### 3. Check the API
 
 ```bash
 # List active trades
-curl "http://localhost:3001/api/trades?page=1&limit=10"
+curl "http://localhost:3001/api/v1/trades?page=1&limit=10"
 ```
 
 Full setup instructions → [docs/getting-started.md](./docs/getting-started.md)
@@ -164,10 +164,10 @@ Full reference → [docs/environment.md](./docs/environment.md)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/health` | — | Server health check |
-| `GET` | `/api/trades` | — | Paginated active listings |
-| `POST` | `/api/trades` | ✅ | Create a trade offer |
-| `GET` | `/api/trades/:id` | — | Get trade by ID |
-| `POST` | `/api/trades/:id/buy` | ✅ | Buy a trade (locks escrow) |
+| `GET` | `/api/v1/trades` | — | Paginated active listings |
+| `POST` | `/api/v1/trades` | ✅ | Create a trade offer |
+| `GET` | `/api/v1/trades/:id` | — | Get trade by ID |
+| `POST` | `/api/v1/trades/:id/buy` | ✅ | Buy a trade (locks escrow) |
 
 Full API docs → [docs/api-reference.md](./docs/api-reference.md)
 

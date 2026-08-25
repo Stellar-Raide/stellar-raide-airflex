@@ -40,7 +40,7 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${apiUrl}/api/auth/request-otp`, {
+      const res = await fetch(`${apiUrl}/api/v1/auth/request-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: phone.trim() }),

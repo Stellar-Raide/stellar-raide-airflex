@@ -5,7 +5,7 @@ import { SseEmitter } from "../services/sseEmitter";
 const router = Router();
 
 // ---------------------------------------------------------------------------
-// GET /api/events  (authenticated)
+// GET /api/v1/events  (authenticated)
 // ---------------------------------------------------------------------------
 
 /**
@@ -21,7 +21,7 @@ const router = Router();
  * using the built-in EventSource retry mechanism.
  *
  * Example (browser):
- *   const es = new EventSource("/api/events", { headers: { Authorization: "Bearer ..." } });
+ *   const es = new EventSource("/api/v1/events", { headers: { Authorization: "Bearer ..." } });
  *   es.addEventListener("trade_completed", (e) => console.log(JSON.parse(e.data)));
  *
  * Note: Authorization header is not directly supported by the browser
