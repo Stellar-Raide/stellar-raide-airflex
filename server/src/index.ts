@@ -17,6 +17,7 @@ const REQUIRED_ENV_VARS = [
   "ESCROW_CONTRACT_ADDRESS",
   "ENCRYPTION_KEY",
   "STELLAR_SERVER_SECRET",
+  "PLATFORM_TREASURY_USER_ID",
 ] as const;
 
 const missingVars = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
