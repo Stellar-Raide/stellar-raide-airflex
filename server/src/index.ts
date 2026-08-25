@@ -7,6 +7,7 @@ import { registerRoutes } from "./routes";
 import logger from "./utils/logger";
 import { errorHandler } from "./middleware/errorHandler";
 import pool from "./db";
+import { initJobQueue } from "./jobs";
 
 // ---------------------------------------------------------------------------
 // Environment validation
@@ -97,6 +98,9 @@ app.listen(PORT, () => {
     { port: PORT, env: process.env["NODE_ENV"] ?? "development" },
     "AirFlex API started"
   );
+
+  // Initialise background job queue (Redis-backed or in-process fallback)
+  initJobQueue();
 });
 
 export default app;
