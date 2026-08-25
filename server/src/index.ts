@@ -6,6 +6,7 @@ import morgan from "morgan";
 import { registerRoutes } from "./routes";
 import logger from "./utils/logger";
 import { errorHandler } from "./middleware/errorHandler";
+import pool from "./db";
 
 // ---------------------------------------------------------------------------
 // Environment validation
@@ -66,6 +67,16 @@ app.use(express.json());
 /** Health-check — used by load balancers and uptime monitors */
 app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+/** Readiness probe — confirms DB connectivity before accepting traffic */
+app.get("/ready", async (_req: Request, res: Response) => {
+  try {
+    await pool.query("SELECT 1");
+    res.status(200).json({ status: "ready", db: "ok" });
+  } catch {
+    res.status(503).json({ status: "not ready", db: "error" });
+  }
 });
 
 // Register all API routes
