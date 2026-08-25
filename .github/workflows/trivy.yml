@@ -1,0 +1,112 @@
+name: Trivy Security Scan
+
+# ---------------------------------------------------------------------------
+# Triggers
+# ---------------------------------------------------------------------------
+# Runs on every pull request targeting main and on pushes to main so that
+# newly introduced Docker images are always scanned before merging.
+# A weekly schedule catches newly disclosed CVEs in unchanged images.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly scan — every Monday at 04:00 UTC (staggered from CodeQL)
+    - cron: "0 4 * * 1"
+
+# Cancel in-progress runs for the same branch/PR on new pushes.
+concurrency:
+  group: trivy-${{ github.ref }}
+  cancel-in-progress: true
+
+# ---------------------------------------------------------------------------
+# Permissions
+# ---------------------------------------------------------------------------
+permissions:
+  actions: read
+  contents: read
+  security-events: write  # required to upload SARIF results to the Security tab
+
+# ---------------------------------------------------------------------------
+# Jobs
+# ---------------------------------------------------------------------------
+jobs:
+
+  # -------------------------------------------------------------------------
+  # 1. Build and scan the API server image
+  # -------------------------------------------------------------------------
+  scan-server:
+    name: Trivy — Server Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Build the server Docker image locally so Trivy can scan it.
+      # The image is never pushed to a registry in this job.
+      - name: Build server Docker image
+        run: |
+          docker build \
+            --file server/Dockerfile \
+            --tag stellar-raide-stellar-raide-airflex-server:${{ github.sha }} \
+            server/
+
+      # Scan the built image for OS and library CVEs.
+      # The build is failed immediately on any CRITICAL severity finding.
+      - name: Scan server image with Trivy
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: stellar-raide-stellar-raide-airflex-server:${{ github.sha }}
+          format: sarif
+          output: trivy-server.sarif
+          severity: CRITICAL,HIGH
+          # Exit with a non-zero code on CRITICAL findings to block the build.
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+
+      # Upload the SARIF report to GitHub Security tab regardless of whether
+      # the scan step succeeded, so findings are always visible.
+      - name: Upload Trivy SARIF (server)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-server.sarif
+          category: trivy-server
+
+  # -------------------------------------------------------------------------
+  # 2. Scan the repository filesystem for misconfigurations and secrets
+  # -------------------------------------------------------------------------
+  scan-filesystem:
+    name: Trivy — Filesystem & IaC Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Scan the repository for:
+      #   - Hardcoded secrets / credentials
+      #   - Infrastructure-as-code misconfigurations
+      #   - Vulnerable library versions declared in manifests
+      - name: Scan filesystem with Trivy
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+          # Include secret detection and config checks in addition to vuln scanning
+          scanners: vuln,secret,misconfig
+
+      - name: Upload Trivy SARIF (filesystem)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-filesystem
