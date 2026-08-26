@@ -1,8 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short,
-    token, Address, Env, Symbol,
+    contract, contracterror, contractimpl, contracttype, symbol_short,
+    token, Address, Env, Symbol, Vec,
 };
 
 // ---------------------------------------------------------------------------
@@ -14,6 +14,14 @@ pub enum DataKey {
     Admin,
     TradeCounter,
     Trade(u64),
+    AllowedToken(Address),
+}
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum Error {
+    UnsupportedToken = 1,
 }
 
 // ---------------------------------------------------------------------------
@@ -68,13 +76,18 @@ impl EscrowContract {
 
     /// Sets the admin address and seeds the trade counter.
     /// Can only be called once (panics if already initialised).
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn initialize(env: Env, admin: Address, allowed_tokens: Vec<Address>) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialised");
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::TradeCounter, &0u64);
+        
+        for token in allowed_tokens.iter() {
+            env.storage().instance().set(&DataKey::AllowedToken(token), &true);
+        }
+        
         // Bump instance TTL so it survives long-running trades
         env.storage().instance().extend_ttl(17_280, 17_280 * 30);
     }
@@ -99,8 +112,12 @@ impl EscrowContract {
         amount: i128,
         asset_type: Symbol,
         expires_at: u64,
-    ) -> u64 {
+    ) -> Result<u64, Error> {
         seller.require_auth();
+
+        if !env.storage().instance().has(&DataKey::AllowedToken(token.clone())) {
+            return Err(Error::UnsupportedToken);
+        }
 
         if amount <= 0 {
             panic!("amount must be positive");
@@ -142,7 +159,23 @@ impl EscrowContract {
         env.events()
             .publish((topic_created(), asset_type), (id, seller, amount));
 
-        id
+        Ok(id)
+    }
+
+    // -----------------------------------------------------------------------
+    // Admin functions
+    // -----------------------------------------------------------------------
+
+    pub fn add_allowed_token(env: Env, token: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialised");
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::AllowedToken(token), &true);
+    }
+
+    pub fn remove_allowed_token(env: Env, token: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialised");
+        admin.require_auth();
+        env.storage().instance().remove(&DataKey::AllowedToken(token));
     }
 
     // -----------------------------------------------------------------------
@@ -373,7 +406,7 @@ mod test {
     use soroban_sdk::{
         testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation, Ledger},
         token::{Client as TokenClient, StellarAssetClient},
-        Address, Env, IntoVal,
+        Address, Env, IntoVal, vec,
     };
 
     fn setup() -> (Env, EscrowContractClient<'static>, Address, Address, Address, Address) {
@@ -396,7 +429,8 @@ mod test {
         // Mint tokens to buyer
         sac.mint(&buyer, &10_000_0000000i128);
 
-        client.initialize(&admin);
+        let allowed_tokens = vec![&env, token_address.clone()];
+        client.initialize(&admin, &allowed_tokens);
 
         (env, client, admin, seller, buyer, token_address)
     }
@@ -422,6 +456,49 @@ mod test {
     }
 
     #[test]
+    fn test_admin_token_management() {
+        let (env, client, _admin, seller, _buyer, _token) = setup();
+        let new_token = Address::generate(&env);
+        
+        // try to list with disallowed token
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+        let result = client.try_create_listing(
+            &seller,
+            &new_token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+        assert!(result.is_err()); // UnsupportedToken
+
+        // add token
+        client.add_allowed_token(&new_token);
+
+        // list should now succeed
+        let trade_id = client.create_listing(
+            &seller,
+            &new_token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+        assert_eq!(trade_id, 1);
+
+        // remove token
+        client.remove_allowed_token(&new_token);
+        
+        // listing again should fail
+        let result2 = client.try_create_listing(
+            &seller,
+            &new_token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+        assert!(result2.is_err());
+    }
+
+    #[test]
     fn test_deposit_to_escrow() {
         let (env, client, _admin, seller, buyer, token) = setup();
         env.ledger().with_mut(|l| l.timestamp = 1_000_000);
@@ -443,7 +520,7 @@ mod test {
 
     #[test]
     fn test_release_payment() {
-        let (env, client, admin, seller, buyer, token) = setup();
+        let (env, client, _admin, seller, buyer, token) = setup();
         env.ledger().with_mut(|l| l.timestamp = 1_000_000);
 
         let trade_id = client.create_listing(
