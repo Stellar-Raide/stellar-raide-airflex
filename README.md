@@ -111,6 +111,14 @@ stellar-raide-stellar-raide-airflex/
 
 ---
 
+## Deploy
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/stellar-raide-stellar-raide-airflex)
+
+Full deployment guide → [docs/deployment.md](./docs/deployment.md)
+
+---
+
 ## Quick Start
 
 ### 1. Clone
@@ -244,6 +252,7 @@ The table below links to the equivalent hand-written Markdown in this repo.
 | [Smart Contract](./docs/smart-contract.md) | Contract functions, security, events |
 | [Architecture](./docs/architecture.md) | System diagrams, request flows, design decisions |
 | [Environment](./docs/environment.md) | All environment variables explained |
+| [Deployment Guide](./docs/deployment.md) | Deploy to Vercel + Railway (server + DB + Redis) |
 | [Deploy Guide](./SOROBAN_DEPLOY_GUIDE.md) | How to deploy a Soroban contract from scratch |
 
 ---

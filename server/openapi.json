@@ -1,0 +1,514 @@
+﻿{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AirFlex API",
+    "version": "1.0.0",
+    "description": "Open-source P2P Airtime & Data Exchange Marketplace backed by the Stellar Network. All protected endpoints require a Bearer JWT obtained from POST /api/v1/auth/verify-otp.",
+    "contact": {
+      "name": "AirFlex Core Team",
+      "url": "https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [{ "url": "/", "description": "Current server" }],
+  "security": [{ "bearerAuth": [] }],
+  "tags": [
+    { "name": "Health",  "description": "Liveness and readiness probes" },
+    { "name": "Auth",    "description": "OTP-based phone authentication" },
+    { "name": "Trades",  "description": "P2P trade offer marketplace" },
+    { "name": "Wallet",  "description": "Stellar wallet and Paystack withdrawals" },
+    { "name": "Profile", "description": "User profile and account management" },
+    { "name": "Events",  "description": "Real-time Server-Sent Events stream" },
+    { "name": "Admin",   "description": "Platform administration and monitoring" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT issued by POST /api/v1/auth/verify-otp. Pass as Authorization: Bearer <token>."
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": { "error": { "type": "string", "example": "Descriptive error message" } }
+      },
+      "ValidationErrorItem": {
+        "type": "object",
+        "required": ["field", "message"],
+        "properties": {
+          "field":   { "type": "string", "example": "phone" },
+          "message": { "type": "string", "example": "phone is required" }
+        }
+      },
+      "ValidationErrorResponse": {
+        "type": "object",
+        "required": ["errors"],
+        "properties": {
+          "errors": { "type": "array", "items": { "$ref": "#/components/schemas/ValidationErrorItem" } }
+        }
+      },
+      "PaginationMeta": {
+        "type": "object",
+        "required": ["page","limit","total","totalPages"],
+        "properties": {
+          "page":       { "type": "integer", "example": 1 },
+          "limit":      { "type": "integer", "example": 20 },
+          "total":      { "type": "integer", "example": 100 },
+          "totalPages": { "type": "integer", "example": 5 }
+        }
+      },
+      "RequestOtpBody": {
+        "type": "object",
+        "required": ["phone"],
+        "properties": {
+          "phone": { "type": "string", "description": "E.164 or Nigerian local format. 10-15 digits.", "example": "+2348012345678" }
+        }
+      },
+      "VerifyOtpBody": {
+        "type": "object",
+        "required": ["phone","otp"],
+        "properties": {
+          "phone": { "type": "string", "example": "+2348012345678" },
+          "otp":   { "type": "string", "minLength": 6, "maxLength": 6, "pattern": "^\\d{6}$", "example": "123456" }
+        }
+      },
+      "AuthTokenResponse": {
+        "type": "object",
+        "required": ["token","user"],
+        "properties": {
+          "token": { "type": "string", "description": "Signed JWT valid for 7 days.", "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." },
+          "user": {
+            "type": "object",
+            "required": ["id","phone","stellarPublicKey"],
+            "properties": {
+              "id":               { "type": "string", "format": "uuid" },
+              "phone":            { "type": "string", "example": "+2348012345678" },
+              "stellarPublicKey": { "type": "string", "example": "GABC1234..." }
+            }
+          }
+        }
+      },
+      "TradeStatus": {
+        "type": "string",
+        "enum": ["Active","Locked","Completed","Cancelled","Disputed"]
+      },
+      "TradeOffer": {
+        "type": "object",
+        "required": ["id","seller_id","asset_type","amount","status","expires_at","created_at","updated_at"],
+        "properties": {
+          "id":                  { "type": "string", "format": "uuid" },
+          "seller_id":           { "type": "string", "format": "uuid" },
+          "buyer_id":            { "type": ["string","null"], "format": "uuid", "nullable": true },
+          "asset_type":          { "type": "string", "example": "MTN_AIRTIME" },
+          "amount":              { "type": "number", "example": 500 },
+          "status":              { "$ref": "#/components/schemas/TradeStatus" },
+          "contract_listing_id": { "type": ["string","null"], "nullable": true, "example": "42" },
+          "escrow_tx_hash":      { "type": ["string","null"], "nullable": true, "example": "abc123txhash" },
+          "expires_at":          { "type": "string", "format": "date-time" },
+          "created_at":          { "type": "string", "format": "date-time" },
+          "updated_at":          { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateTradeBody": {
+        "type": "object",
+        "required": ["assetType","amount","expiresInHours"],
+        "properties": {
+          "assetType":      { "type": "string", "maxLength": 50, "pattern": "^[A-Za-z0-9_-]+$", "example": "MTN_AIRTIME" },
+          "amount":         { "type": "number", "exclusiveMinimum": 0, "example": 500 },
+          "expiresInHours": { "type": "integer", "minimum": 1, "maximum": 168, "example": 24 }
+        }
+      },
+      "BuyTradeBody": {
+        "type": "object",
+        "required": ["buyerSecretKey"],
+        "properties": {
+          "buyerSecretKey": { "type": "string", "minLength": 56, "maxLength": 56, "description": "Stellar secret key (S...). 56 characters.", "example": "SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" }
+        }
+      },
+      "TradeListResponse": {
+        "type": "object",
+        "required": ["data","pagination"],
+        "properties": {
+          "data":       { "type": "array", "items": { "$ref": "#/components/schemas/TradeOffer" } },
+          "pagination": { "$ref": "#/components/schemas/PaginationMeta" }
+        }
+      },
+      "WalletResponse": {
+        "type": "object",
+        "required": ["publicKey","balance","asset","network"],
+        "properties": {
+          "publicKey": { "type": "string", "example": "GABC1234..." },
+          "balance":   { "type": "string", "description": "XLM balance as a decimal string.", "example": "10000.0000000" },
+          "asset":     { "type": "string", "example": "XLM" },
+          "network":   { "type": "string", "example": "testnet" }
+        }
+      },
+      "Bank": {
+        "type": "object",
+        "required": ["code","name"],
+        "properties": {
+          "code": { "type": "string", "example": "058" },
+          "name": { "type": "string", "example": "Guaranty Trust Bank" }
+        }
+      },
+      "BanksResponse": {
+        "type": "object",
+        "required": ["banks"],
+        "properties": {
+          "banks": { "type": "array", "items": { "$ref": "#/components/schemas/Bank" } }
+        }
+      },
+      "ResolveAccountResponse": {
+        "type": "object",
+        "required": ["account_name"],
+        "properties": { "account_name": { "type": "string", "example": "JOHN DOE" } }
+      },
+      "WithdrawBody": {
+        "type": "object",
+        "required": ["amount","bank_code","account_number","account_name"],
+        "properties": {
+          "amount":         { "type": "number", "exclusiveMinimum": 0, "example": 1000 },
+          "bank_code":      { "type": "string", "example": "058" },
+          "account_number": { "type": "string", "example": "0123456789" },
+          "account_name":   { "type": "string", "example": "JOHN DOE" }
+        }
+      },
+      "ProfileResponse": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["id","maskedPhone","createdAt","totalTradesCompleted","stellarPublicKey"],
+            "properties": {
+              "id":                   { "type": "string", "format": "uuid" },
+              "maskedPhone":          { "type": "string", "example": "+234 *** *** 5678" },
+              "createdAt":            { "type": "string", "format": "date-time" },
+              "totalTradesCompleted": { "type": "integer", "example": 5 },
+              "stellarPublicKey":     { "type": "string", "example": "GABC1234..." }
+            }
+          }
+        }
+      },
+      "ProfileTradesResponse": {
+        "type": "object",
+        "required": ["data","pagination"],
+        "properties": {
+          "data":       { "type": "array", "items": { "$ref": "#/components/schemas/TradeOffer" } },
+          "pagination": { "$ref": "#/components/schemas/PaginationMeta" }
+        }
+      },
+      "DeleteAccountResponse": {
+        "type": "object",
+        "required": ["message","scheduledDeletionAt"],
+        "properties": {
+          "message":              { "type": "string", "example": "Account deletion requested. Your account will be anonymised in 30 days." },
+          "scheduledDeletionAt":  { "type": "string", "format": "date-time", "description": "ISO timestamp 30 days from now." }
+        }
+      },
+      "DeletionStatusResponse": {
+        "type": "object",
+        "required": ["pendingDeletion"],
+        "properties": {
+          "pendingDeletion":      { "type": "boolean" },
+          "scheduledDeletionAt":  { "type": ["string","null"], "format": "date-time", "nullable": true }
+        }
+      },
+      "QueueStats": {
+        "type": "object",
+        "required": ["name","waiting","active","completed","failed","delayed"],
+        "properties": {
+          "name":      { "type": "string", "example": "fund-stellar-account" },
+          "waiting":   { "type": "integer", "example": 0 },
+          "active":    { "type": "integer", "example": 1 },
+          "completed": { "type": "integer", "example": 42 },
+          "failed":    { "type": "integer", "example": 2 },
+          "delayed":   { "type": "integer", "example": 0 },
+          "recentFailures": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "jobId":         { "type": "string" },
+                "data":          { "type": "object" },
+                "failedReason":  { "type": "string" },
+                "timestamp":     { "type": "string", "format": "date-time" }
+              }
+            }
+          }
+        }
+      },
+      "QueuesResponse": {
+        "type": "object",
+        "required": ["queues"],
+        "properties": {
+          "queues": { "type": "array", "items": { "$ref": "#/components/schemas/QueueStats" } }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized":        { "description": "Missing or invalid Bearer JWT.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Missing or invalid Authorization header" } } } },
+      "Forbidden":           { "description": "Authenticated but not permitted.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Only the seller can confirm delivery" } } } },
+      "NotFound":            { "description": "Resource does not exist.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Trade offer not found" } } } },
+      "UnprocessableEntity": { "description": "Request body failed schema validation.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } } } },
+      "TooManyRequests":     { "description": "Rate limit exceeded.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Too many requests. Please slow down." } } } },
+      "InternalError":       { "description": "Unexpected server error.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Internal server error" } } } }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"], "summary": "Liveness probe", "security": [],
+        "responses": {
+          "200": { "description": "Server is alive.", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "ok" }, "timestamp": { "type": "string", "format": "date-time" } } } } } }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": ["Health"], "summary": "Readiness probe", "security": [],
+        "responses": {
+          "200": { "description": "Server and DB ready.", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "ready" }, "db": { "type": "string", "example": "ok" } } } } } },
+          "503": { "description": "Database not reachable.", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "not ready" }, "db": { "type": "string", "example": "error" } } } } } }
+        }
+      }
+    },
+    "/api/v1/auth/request-otp": {
+      "post": {
+        "tags": ["Auth"], "summary": "Request OTP", "security": [],
+        "description": "Sends a 6-digit OTP via Termii SMS. Creates user record on first call.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequestOtpBody" } } } },
+        "responses": {
+          "200": { "description": "OTP sent.", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string", "example": "OTP sent successfully" } } } } } },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "502": { "description": "Termii SMS unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/auth/verify-otp": {
+      "post": {
+        "tags": ["Auth"], "summary": "Verify OTP and obtain JWT", "security": [],
+        "description": "Verifies OTP via Termii. Returns JWT and provisions Stellar wallet for new users.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VerifyOtpBody" } } } },
+        "responses": {
+          "200": { "description": "JWT issued.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthTokenResponse" } } } },
+          "400": { "description": "Invalid or expired OTP.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "502": { "description": "Termii verification unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/trades": {
+      "get": {
+        "tags": ["Trades"], "summary": "List active trade offers", "security": [],
+        "parameters": [
+          { "name": "page",  "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } }
+        ],
+        "responses": {
+          "200": { "description": "Paginated active listings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TradeListResponse" } } } },
+          "400": { "description": "Invalid query params.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "tags": ["Trades"], "summary": "Create a trade offer", "security": [{ "bearerAuth": [] }],
+        "description": "Creates a listing. Calls create_listing on the Soroban escrow contract.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTradeBody" } } } },
+        "responses": {
+          "201": { "description": "Trade created.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/TradeOffer" } } } } } },
+          "400": { "description": "Seller wallet not found.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/trades/{id}": {
+      "get": {
+        "tags": ["Trades"], "summary": "Get trade by ID", "security": [],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Trade found.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/TradeOffer" } } } } } },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/trades/{id}/buy": {
+      "post": {
+        "tags": ["Trades"], "summary": "Buy a trade offer", "security": [{ "bearerAuth": [] }],
+        "description": "Locks buyer funds via deposit_to_escrow. Trade transitions to Locked.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuyTradeBody" } } } },
+        "responses": {
+          "200": { "description": "Escrow locked.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/TradeOffer" } } } } } },
+          "400": { "description": "Trade not available.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/UnprocessableEntity" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/trades/{id}/confirm-delivery": {
+      "post": {
+        "tags": ["Trades"], "summary": "Confirm delivery (seller only)", "security": [{ "bearerAuth": [] }],
+        "description": "202 Accepted immediately. release_payment runs async with up to 3 retries. Parties notified via SSE.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "202": { "description": "Confirmation accepted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" }, "tradeId": { "type": "string", "format": "uuid" } } } } } },
+          "400": { "description": "Trade not in Locked state.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/wallet": {
+      "get": {
+        "tags": ["Wallet"], "summary": "Get wallet balance", "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Wallet details.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WalletResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "502": { "description": "Horizon RPC unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/wallet/banks": {
+      "get": {
+        "tags": ["Wallet"], "summary": "List Nigerian banks", "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Bank list.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BanksResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "502": { "description": "Paystack API unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/wallet/resolve-account": {
+      "get": {
+        "tags": ["Wallet"], "summary": "Resolve bank account name", "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "account_number", "in": "query", "required": true, "schema": { "type": "string", "example": "0123456789" } },
+          { "name": "bank_code",      "in": "query", "required": true, "schema": { "type": "string", "example": "058" } }
+        ],
+        "responses": {
+          "200": { "description": "Account name resolved.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResolveAccountResponse" } } } },
+          "400": { "description": "Missing query params.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "502": { "description": "Paystack API unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/wallet/withdraw": {
+      "post": {
+        "tags": ["Wallet"], "summary": "Withdraw to bank account", "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WithdrawBody" } } } },
+        "responses": {
+          "200": { "description": "Withdrawal initiated.", "content": { "application/json": { "schema": { "type": "object", "properties": { "success": { "type": "boolean", "example": true } } } } } },
+          "400": { "description": "Invalid input or insufficient balance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/profile": {
+      "get": {
+        "tags": ["Profile"], "summary": "Get own profile", "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Profile data.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProfileResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "tags": ["Profile"], "summary": "Request account deletion (GDPR/NDPR)", "security": [{ "bearerAuth": [] }],
+        "description": "Initiates a 30-day soft-delete. All pending trades cancelled. PII anonymised after grace period.",
+        "responses": {
+          "200": { "description": "Deletion request accepted.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteAccountResponse" } } } },
+          "400": { "description": "Deletion already pending.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/profile/trades": {
+      "get": {
+        "tags": ["Profile"], "summary": "Get own trade history", "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "page",   "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+          { "name": "limit",  "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 } },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["All","Active","Locked","Completed","Cancelled","Disputed"], "default": "All" } }
+        ],
+        "responses": {
+          "200": { "description": "Trade history.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProfileTradesResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/profile/deletion-status": {
+      "get": {
+        "tags": ["Profile"], "summary": "Check account deletion status", "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Deletion status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeletionStatusResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/v1/profile/cancel-deletion": {
+      "post": {
+        "tags": ["Profile"], "summary": "Cancel pending account deletion", "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Deletion cancelled.", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string", "example": "Account deletion cancelled. Your account is restored." } } } } } },
+          "400": { "description": "No pending deletion to cancel.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "tags": ["Events"], "summary": "Server-Sent Events stream", "security": [{ "bearerAuth": [] }],
+        "description": "Persistent SSE stream. Event types: connected, trade_completed, trade_disputed, admin_alert.",
+        "responses": {
+          "200": { "description": "SSE stream opened.", "content": { "text/event-stream": { "schema": { "type": "string" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/admin/queues": {
+      "get": {
+        "tags": ["Admin"], "summary": "Job queue metrics (admin only)", "security": [{ "bearerAuth": [] }],
+        "description": "Returns queue depths and recent failure counts for all background job queues.",
+        "responses": {
+          "200": { "description": "Queue stats.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/QueuesResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    }
+  }
+}
