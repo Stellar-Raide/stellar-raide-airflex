@@ -89,7 +89,7 @@ async function verifyOtpWithTermii(
 // The validate() middleware handles 422 responses automatically.
 
 // ---------------------------------------------------------------------------
-// POST /api/auth/request-otp
+// POST /api/v1/auth/request-otp
 // ---------------------------------------------------------------------------
 
 router.post(
@@ -119,7 +119,7 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
-// POST /api/auth/verify-otp
+// POST /api/v1/auth/verify-otp
 // ---------------------------------------------------------------------------
 
 router.post(

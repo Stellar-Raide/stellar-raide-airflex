@@ -1,0 +1,36 @@
+---
+title: Health
+---
+
+import { Callout } from "nextra/components";
+
+# Health
+
+<Callout type="info">
+  Generated from [`openapi/openapi.json`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/apps/docs-site/openapi/openapi.json).
+  Run `npm run generate:api` in `apps/docs-site` after changing the spec to
+  refresh this page. The raw spec is also served at
+  [`/openapi.json`](/openapi.json).
+</Callout>
+
+Server status.
+
+## `GET /health`
+
+**Server health check**
+
+Returns server status. No authentication required.
+
+**Responses**
+
+**`200`** — OK
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-08-24T10:00:00.000Z"
+}
+```
+
+---
+

@@ -1,5 +1,5 @@
 [workspace]
-members = ["escrow"]
+members = ["escrow", "marketplace"]
 resolver = "2"
 
 [profile.release]

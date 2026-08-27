@@ -8,6 +8,8 @@ export interface TradeOffer {
   buyer_id: string | null;
   asset_type: string;
   amount: number;
+  fee_amount: number | null;
+  seller_net_amount: number | null;
   status: TradeStatus;
   contract_listing_id: string | null;
   escrow_tx_hash: string | null;

@@ -1,0 +1,734 @@
+openapi: 3.0.3
+info:
+  title: AirFlex API
+  description: |
+    REST API for the AirFlex P2P airtime and data marketplace built on Stellar.
+
+    All endpoints (except `/health`) are prefixed with `/api/v1/`.
+    Every response includes an `X-Api-Version: 1` header.
+
+    See [CONTRIBUTING.md](../CONTRIBUTING.md#api-versioning-policy) for the full
+    versioning policy.
+  version: 1.0.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3001
+    description: Local development server
+
+security: []
+
+tags:
+  - name: Health
+    description: Server status
+  - name: Auth
+    description: OTP-based authentication
+  - name: Trades
+    description: Trade offer lifecycle
+  - name: Wallet
+    description: Stellar wallet and withdrawal
+  - name: Profile
+    description: User profile and trade history
+  - name: Events
+    description: Server-Sent Events real-time stream
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Server health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Server is healthy
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/v1/auth/request-otp:
+    post:
+      tags: [Auth]
+      summary: Request an OTP sent via SMS
+      operationId: requestOtp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestOtpInput"
+      responses:
+        "200":
+          description: OTP sent successfully
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: OTP sent
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /api/v1/auth/verify-otp:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and receive JWT
+      operationId: verifyOtp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyOtpInput"
+      responses:
+        "200":
+          description: OTP verified — JWT returned
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: Signed JWT to use in subsequent requests
+                  user:
+                    $ref: "#/components/schemas/UserProfile"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/trades:
+    get:
+      tags: [Trades]
+      summary: List paginated active trade offers
+      operationId: listTrades
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of active trades
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedTradesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+    post:
+      tags: [Trades]
+      summary: Create a new trade offer
+      operationId: createTrade
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTradeInput"
+      responses:
+        "201":
+          description: Trade offer created
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/trades/{id}:
+    get:
+      tags: [Trades]
+      summary: Get a trade offer by ID
+      operationId: getTrade
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Trade offer found
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/trades/{id}/buy:
+    post:
+      tags: [Trades]
+      summary: Buy a trade offer (lock escrow funds)
+      operationId: buyTrade
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BuyTradeInput"
+      responses:
+        "200":
+          description: Escrow locked — trade status updated to Locked
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/trades/{id}/confirm-delivery:
+    post:
+      tags: [Trades]
+      summary: Confirm delivery (seller only) — triggers payment release
+      operationId: confirmDelivery
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Delivery confirmed and payment released
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/wallet:
+    get:
+      tags: [Wallet]
+      summary: Get authenticated user's wallet balance
+      operationId: getWallet
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Wallet balance
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/wallet/banks:
+    get:
+      tags: [Wallet]
+      summary: List supported Nigerian banks for withdrawal
+      operationId: listBanks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of supported banks
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Bank"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/wallet/resolve-account:
+    get:
+      tags: [Wallet]
+      summary: Resolve bank account details
+      operationId: resolveAccount
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: account_number
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: bank_code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Account resolved
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account_name:
+                    type: string
+                  account_number:
+                    type: string
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/wallet/withdraw:
+    post:
+      tags: [Wallet]
+      summary: Initiate a withdrawal to a Nigerian bank account
+      operationId: withdrawFunds
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WithdrawInput"
+      responses:
+        "200":
+          description: Withdrawal initiated
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Withdrawal initiated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/profile:
+    get:
+      tags: [Profile]
+      summary: Get authenticated user's profile
+      operationId: getProfile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User profile
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/profile/trades:
+    get:
+      tags: [Profile]
+      summary: Get authenticated user's trade history
+      operationId: getProfileTrades
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [all, buying, selling]
+            default: all
+      responses:
+        "200":
+          description: Paginated list of user's trades
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedTradesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/events:
+    get:
+      tags: [Events]
+      summary: Real-time Server-Sent Events stream
+      operationId: getEvents
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Persistent SSE connection established
+          headers:
+            X-Api-Version:
+              $ref: "#/components/headers/X-Api-Version"
+            Content-Type:
+              schema:
+                type: string
+                example: text/event-stream
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  headers:
+    X-Api-Version:
+      description: Current API version number
+      schema:
+        type: string
+        example: "1"
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, version, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        version:
+          type: string
+          example: 1.0.0
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-08-02T10:00:00.000Z"
+
+    RequestOtpInput:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          description: |
+            Nigerian local format (0XXXXXXXXXX) or international E.164 (+2348XXXXXXXXX).
+          example: "+2348012345678"
+
+    VerifyOtpInput:
+      type: object
+      required: [phone, otp]
+      properties:
+        phone:
+          type: string
+          example: "+2348012345678"
+        otp:
+          type: string
+          minLength: 6
+          maxLength: 6
+          pattern: '^\d{6}$'
+          example: "123456"
+
+    CreateTradeInput:
+      type: object
+      required: [assetType, amount, expiresInHours]
+      properties:
+        assetType:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,50}$'
+          example: MTN_AIRTIME
+        amount:
+          type: number
+          minimum: 0.000001
+          example: 500
+        expiresInHours:
+          type: integer
+          minimum: 1
+          maximum: 168
+          example: 24
+
+    BuyTradeInput:
+      type: object
+      required: [buyerSecretKey]
+      properties:
+        buyerSecretKey:
+          type: string
+          minLength: 56
+          maxLength: 56
+          description: Buyer's Stellar secret key (placeholder — production uses client-side signing)
+
+    WithdrawInput:
+      type: object
+      required: [amount, account_number, bank_code]
+      properties:
+        amount:
+          type: number
+          minimum: 0.000001
+          example: 100
+        account_number:
+          type: string
+          example: "0123456789"
+        bank_code:
+          type: string
+          example: "058"
+
+    Trade:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        seller_id:
+          type: string
+          format: uuid
+        buyer_id:
+          type: string
+          format: uuid
+          nullable: true
+        asset_type:
+          type: string
+          example: MTN_AIRTIME
+        amount:
+          type: number
+          example: 500
+        status:
+          type: string
+          enum: [Active, Locked, Completed, Disputed, Expired]
+        contract_listing_id:
+          type: string
+          nullable: true
+        escrow_tx_hash:
+          type: string
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TradeResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Trade"
+
+    PaginatedTradesResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Trade"
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+            totalPages:
+              type: integer
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        stellarPublicKey:
+          type: string
+
+    WalletResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            stellar_public_key:
+              type: string
+            balance:
+              type: string
+              description: XLM balance as a string
+            trades_as_seller:
+              type: integer
+            trades_as_buyer:
+              type: integer
+
+    Bank:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Guaranty Trust Bank
+        code:
+          type: string
+          example: "058"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Validation failed
+        details:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+  responses:
+    ValidationError:
+      description: Request body or query parameters failed validation
+      headers:
+        X-Api-Version:
+          $ref: "#/components/headers/X-Api-Version"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorResponse"
+
+    UnprocessableEntity:
+      description: Unprocessable entity
+      headers:
+        X-Api-Version:
+          $ref: "#/components/headers/X-Api-Version"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    Unauthorized:
+      description: Missing or invalid JWT
+      headers:
+        X-Api-Version:
+          $ref: "#/components/headers/X-Api-Version"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: Missing or invalid Authorization header
+
+    Forbidden:
+      description: Authenticated but not authorised for this action
+      headers:
+        X-Api-Version:
+          $ref: "#/components/headers/X-Api-Version"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    NotFound:
+      description: Resource not found
+      headers:
+        X-Api-Version:
+          $ref: "#/components/headers/X-Api-Version"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: Trade offer not found

@@ -67,7 +67,7 @@ export default function WithdrawModal({
   async function fetchBanks() {
     try {
       const token = getToken();
-      const res = await fetch(`${apiUrl}/api/wallet/banks`, {
+      const res = await fetch(`${apiUrl}/api/v1/wallet/banks`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const data = await res.json();
@@ -100,7 +100,7 @@ export default function WithdrawModal({
     try {
       const token = getToken();
       const res = await fetch(
-        `${apiUrl}/api/wallet/resolve-account?account_number=${accountNumber}&bank_code=${selectedBank.code}`,
+        `${apiUrl}/api/v1/wallet/resolve-account?account_number=${accountNumber}&bank_code=${selectedBank.code}`,
         {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         }
@@ -145,7 +145,7 @@ export default function WithdrawModal({
 
     try {
       const token = getToken();
-      const res = await fetch(`${apiUrl}/api/wallet/withdraw`, {
+      const res = await fetch(`${apiUrl}/api/v1/wallet/withdraw`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

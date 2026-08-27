@@ -88,9 +88,11 @@ Full architecture diagram → [docs/architecture.md](./docs/architecture.md)
 
 ```
 stellar-raide-stellar-raide-airflex/
-├── contracts/          # Soroban smart contracts (escrow, marketplace, token)
+├── apps/
+│   └── docs-site/       # Public documentation site (Next.js + Nextra), deployed to docs.stellar-raide-stellar-raide-airflex.io
+├── contracts/           # Soroban smart contracts (escrow, marketplace, token)
 ├── frontend/
-│   └── app/            # Next.js application
+│   └── app/             # Next.js application
 ├── server/
 │   ├── src/
 │   │   ├── middleware/ # Express middleware (auth, etc.)
@@ -139,14 +141,14 @@ Server runs on `http://localhost:3001`.
 
 ```bash
 curl http://localhost:3001/health
-# → {"status":"ok","timestamp":"..."}
+# → {"status":"ok","version":"1.0.0","timestamp":"..."}
 ```
 
 ### 3. Check the API
 
 ```bash
 # List active trades
-curl "http://localhost:3001/api/trades?page=1&limit=10"
+curl "http://localhost:3001/api/v1/trades?page=1&limit=10"
 ```
 
 Full setup instructions → [docs/getting-started.md](./docs/getting-started.md)
@@ -172,10 +174,10 @@ Full reference → [docs/environment.md](./docs/environment.md)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/health` | — | Server health check |
-| `GET` | `/api/trades` | — | Paginated active listings |
-| `POST` | `/api/trades` | ✅ | Create a trade offer |
-| `GET` | `/api/trades/:id` | — | Get trade by ID |
-| `POST` | `/api/trades/:id/buy` | ✅ | Buy a trade (locks escrow) |
+| `GET` | `/api/v1/trades` | — | Paginated active listings |
+| `POST` | `/api/v1/trades` | ✅ | Create a trade offer |
+| `GET` | `/api/v1/trades/:id` | — | Get trade by ID |
+| `POST` | `/api/v1/trades/:id/buy` | ✅ | Buy a trade (locks escrow) |
 
 Full API docs → [docs/api-reference.md](./docs/api-reference.md)
 
@@ -237,6 +239,11 @@ Deployment guide → [SOROBAN_DEPLOY_GUIDE.md](./SOROBAN_DEPLOY_GUIDE.md)
 
 ## Documentation
 
+The full documentation site (API Reference, Contract Reference, SDK Reference,
+Deployment, and Contributing guides) is published at **docs.stellar-raide-stellar-raide-airflex.io** —
+built from [`apps/docs-site`](./apps/docs-site) via [Nextra](https://nextra.site).
+The table below links to the equivalent hand-written Markdown in this repo.
+
 | Document | Description |
 |----------|-------------|
 | [Overview](./docs/overview.md) | Concepts, trade lifecycle, system components |
@@ -261,8 +268,18 @@ Deployment guide → [SOROBAN_DEPLOY_GUIDE.md](./SOROBAN_DEPLOY_GUIDE.md)
 
 ## Security
 
-Please report vulnerabilities privately. Never disclose security issues publicly
-before a fix is available.
+AirFlex handles real user funds — security is a first-class concern.
+
+Please report vulnerabilities **privately** via email at **security@stellar-raide-stellar-raide-airflex.io**
+or through [GitHub's private vulnerability reporting](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/security/advisories/new).
+Never disclose security issues publicly before a fix is available.
+
+We acknowledge reports within **48 hours**, complete triage within **7 days**,
+and communicate a fix timeline within **14 days**. Researchers who report
+valid issues in good faith are credited in the published advisory and will not
+face legal action.
+
+Full policy, scope, and coordinated disclosure terms → [SECURITY.md](./SECURITY.md)
 
 ---
 

@@ -16,8 +16,9 @@ export function registerRoutes(app: Express): void {
   app.use('/api/v1/profile', profileRouter);
   app.use('/api/v1/webhooks', webhooksRouter);
   app.use('/api/v1/admin', adminRouter);
+  app.use('/api/v1/events', eventsRouter);
 
-  // SSE real-time event stream (kept at /api/events for compatibility)
+  // Legacy SSE path — kept for backwards compatibility; prefer /api/v1/events
   app.use('/api/events', eventsRouter);
 
   // OpenAPI 3.1 spec + Swagger UI

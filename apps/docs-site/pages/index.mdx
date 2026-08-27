@@ -1,0 +1,63 @@
+---
+title: Introduction
+---
+
+import { Callout, Cards } from "nextra/components";
+
+# 🌀 AirFlex
+
+**Open-source P2P airtime & data exchange marketplace powered by the Stellar network.**
+
+AirFlex lets users securely buy, sell, and exchange airtime and mobile data
+through a peer-to-peer marketplace. Soroban smart contracts hold buyer funds
+in escrow and release them only after delivery is confirmed, while Stellar
+handles fast, low-fee settlement.
+
+<Cards>
+  <Cards.Card title="Getting Started" href="/getting-started" icon={<span>🚀</span>} />
+  <Cards.Card title="API Reference" href="/api-reference" icon={<span>🔌</span>} />
+  <Cards.Card title="Contract Reference" href="/contract-reference" icon={<span>📜</span>} />
+  <Cards.Card title="SDK Reference" href="/sdk-reference" icon={<span>🧰</span>} />
+</Cards>
+
+## Why AirFlex?
+
+Millions of people accidentally over-purchase airtime or data with no safe
+way to recover its value. AirFlex creates a structured marketplace where
+telecom value can be exchanged safely — Stellar handles settlement and
+Soroban contracts guarantee funds only move once delivery is confirmed.
+
+## Trade lifecycle
+
+```
+Seller creates listing → Open
+Buyer deposits escrow   → Locked
+Delivery confirmed      → Completed  (funds → seller)
+No delivery / timeout   → Cancelled  (funds → buyer)
+Dispute raised          → Disputed  → admin resolves → Completed | Cancelled
+```
+
+## System components
+
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| Frontend | Next.js + Tailwind CSS | User-facing web app |
+| API Server | Node.js + Express | REST API, business logic |
+| Database | PostgreSQL | Trade records, user data |
+| Smart Contracts | Rust + Soroban | On-chain escrow |
+| Payments | Paystack | Fiat deposits and withdrawals |
+| Messaging | Termii | OTP delivery via SMS |
+| Blockchain | Stellar + Horizon | Settlement and wallet |
+
+## Deployed contracts
+
+| Contract | Network | Address |
+|----------|---------|---------|
+| Escrow | Testnet | `CCBJ235OCBFZXBFSUUUT4PMG7RRCAXZXMUEB2L7CTTQ5NRSNO4P2SLNP` |
+
+<Callout type="default">
+  New to the codebase? Start with [Getting Started](/getting-started) to run
+  AirFlex locally, then browse the [API Reference](/api-reference) and
+  [Contract Reference](/contract-reference) to see exactly what's available
+  to build against.
+</Callout>

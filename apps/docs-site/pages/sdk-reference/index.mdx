@@ -1,0 +1,31 @@
+---
+title: SDK Reference
+---
+
+import { Callout } from "nextra/components";
+
+# SDK Reference
+
+<Callout type="warning">
+  AirFlex does not publish a dedicated client SDK package yet — there is no
+  `@stellar-raide-stellar-raide-airflex/sdk` on npm. This section documents how to integrate against the
+  two things that already exist and are stable: the [REST API](/api-reference)
+  and the [Escrow contract](/contract-reference/escrow), using the same
+  general-purpose libraries the `frontend/` and `server/` apps in this repo
+  use internally. A packaged SDK wrapping both is on the roadmap — once it
+  ships, this page is where it will be documented.
+</Callout>
+
+## Two ways to integrate
+
+| | Use for | Library |
+|---|---|---|
+| [REST Client](/sdk-reference/rest-client) | Listing/buying trades, wallet balance, auth, profile | Any HTTP client (`fetch`, `axios`) against the [API Reference](/api-reference) |
+| [Contract Client](/sdk-reference/contract-client) | Calling the escrow contract directly on Soroban | [`@stellar/stellar-sdk`](https://www.npmjs.com/package/@stellar/stellar-sdk) or the [`stellar-cli`](https://developers.stellar.org/docs/tools/cli) |
+
+Most integrations should go through the **REST API** — it already wraps the
+contract calls with validation, database persistence, and delivery
+verification (see [`POST /api/trades/:id/confirm-delivery`](/api-reference/trades)).
+Go straight to the **Contract Client** only if you're building tooling that
+needs to read on-chain state directly (indexers, block explorers, alternate
+front-ends) or you're contributing to the escrow contract itself.

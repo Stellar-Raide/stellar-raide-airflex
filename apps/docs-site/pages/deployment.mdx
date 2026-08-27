@@ -1,0 +1,127 @@
+---
+title: Deployment
+---
+
+import { Callout, Tabs } from "nextra/components";
+
+# Deployment
+
+This page covers deploying all three parts of AirFlex: the API server, the
+escrow contract, and this documentation site.
+
+## API server
+
+### Required environment variables
+
+The server **will not start** if any of these are missing:
+
+| Variable | Description |
+|----------|-------------|
+| `JWT_SECRET` | Signs and verifies JWTs. Random string, at least 32 characters. |
+| `DATABASE_URL` | PostgreSQL connection string. |
+| `ESCROW_CONTRACT_ADDRESS` | Deployed Soroban escrow contract ID (starts with `C`). |
+
+### Full reference
+
+<Tabs items={["Server", "Stellar", "Payments & messaging", "Auth"]}>
+  <Tabs.Tab>
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3001` | Port the Express server listens on. |
+| `NODE_ENV` | `development` | Set to `production` in deployed environments. |
+| `CORS_ORIGIN` | `*` | Allowed CORS origin. Set to your exact frontend domain in production — never leave it as `*` in a live environment. |
+  </Tabs.Tab>
+  <Tabs.Tab>
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `STELLAR_NETWORK` | `testnet` | Set to `mainnet` for the public network. Any other value uses testnet. |
+| `HORIZON_URL` | `https://horizon-testnet.stellar.org` | Horizon REST endpoint for account loading and tx submission. |
+| `SOROBAN_RPC_URL` | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint for contract simulation/invocation. |
+| `ESCROW_CONTRACT_ADDRESS` | `CCBJ235OC...` | Contract ID of the deployed escrow contract. |
+
+**Mainnet endpoints:**
+```
+HORIZON_URL=https://horizon.stellar.org
+SOROBAN_RPC_URL=https://mainnet.stellar.validationcloud.io/v1/<API_KEY>
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `PAYSTACK_SECRET_KEY` | `sk_test_xxx` | Paystack secret key for deposits/withdrawals. `sk_test_` for test mode, `sk_live_` for production. |
+| `TERMII_API_KEY` | `TLxxx` | Termii API key for OTP delivery via SMS. |
+  </Tabs.Tab>
+  <Tabs.Tab>
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `JWT_SECRET` | `a_long_random_string` | At least 32 characters. Never commit this value. Rotating it invalidates all active sessions. |
+  </Tabs.Tab>
+</Tabs>
+
+<Callout type="warning">
+  `stellar_secret_key` values stored in the `wallets` table should be
+  encrypted at rest (e.g. envelope encryption via AWS KMS) before a
+  production launch. Never leave `CORS_ORIGIN` as `*` in a live environment.
+</Callout>
+
+## Escrow contract
+
+```bash
+# Add the required WASM target
+rustup target add wasm32v1-none
+
+# Build from the contracts workspace root
+cd contracts
+stellar contract build
+```
+
+Output: `contracts/target/wasm32v1-none/release/stellar-raide-stellar-raide-airflex_escrow.wasm`.
+
+The currently deployed testnet contract:
+
+| | |
+|---|---|
+| **Network** | Stellar Testnet |
+| **Contract ID** | `CCBJ235OCBFZXBFSUUUT4PMG7RRCAXZXMUEB2L7CTTQ5NRSNO4P2SLNP` |
+| **SDK Version** | `soroban-sdk v22.0.11` |
+
+Full deploy walkthrough: [`SOROBAN_DEPLOY_GUIDE.md`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/SOROBAN_DEPLOY_GUIDE.md).
+Contract CI (`cargo fmt`, `clippy`, tests, WASM build) runs automatically on
+every PR via [`.github/workflows/ci.yml`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/.github/workflows/ci.yml),
+and tagged releases (`v*.*.*`) are packaged via
+[`.github/workflows/release.yml`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/.github/workflows/release.yml).
+
+## This documentation site
+
+`apps/docs-site` deploys to Vercel at **docs.stellar-raide-stellar-raide-airflex.io** via
+[`.github/workflows/frontend-ci.yml`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/.github/workflows/frontend-ci.yml),
+which builds and deploys on every push to `main` that touches
+`apps/docs-site/**` (and posts a preview deployment on pull requests).
+
+### One-time setup
+
+1. Create a new Vercel project pointed at this repo with **Root Directory**
+   set to `apps/docs-site`.
+2. Add `docs.stellar-raide-stellar-raide-airflex.io` as a domain on that Vercel project (Vercel →
+   Project → Settings → Domains) and point its DNS at Vercel per their
+   instructions.
+3. Add these repository secrets under **Settings → Secrets and variables →
+   Actions**:
+
+   | Secret | Where to get it |
+   |--------|------------------|
+   | `VERCEL_TOKEN` | Vercel → Account Settings → Tokens |
+   | `VERCEL_ORG_ID` | `.vercel/project.json` after running `vercel link` locally, or Vercel → Team Settings |
+   | `VERCEL_PROJECT_ID_DOCS_SITE` | Same `.vercel/project.json`, or the project's Settings page |
+
+Once those secrets exist, the workflow handles builds and deploys — no
+manual `vercel deploy` needed after the first setup.
+
+### Building locally
+
+```bash
+cd apps/docs-site
+npm install
+npm run build   # runs the API/Contract reference generators first, then next build
+npm run start   # serve the production build on :3002
+```

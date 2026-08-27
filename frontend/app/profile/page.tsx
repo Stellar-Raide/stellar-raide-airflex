@@ -362,7 +362,7 @@ export default function ProfilePage() {
     setProfileLoading(true);
     setProfileError(null);
 
-    fetch(`${apiUrl}/api/profile`, {
+    fetch(`${apiUrl}/api/v1/profile`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json() as Promise<ProfileResponse>)
@@ -393,7 +393,7 @@ export default function ProfilePage() {
       status: filter,
     });
 
-    fetch(`${apiUrl}/api/profile/trades?${params.toString()}`, {
+    fetch(`${apiUrl}/api/v1/profile/trades?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json() as Promise<TradesResponse>)
