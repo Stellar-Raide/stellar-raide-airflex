@@ -1,0 +1,9 @@
+{
+  "index": "Overview",
+  "health": "Health",
+  "auth": "Auth",
+  "trades": "Trades",
+  "wallet": "Wallet",
+  "profile": "Profile",
+  "events": "Events"
+}

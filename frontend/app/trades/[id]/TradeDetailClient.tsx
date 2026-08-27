@@ -226,7 +226,7 @@ export default function TradeDetailClient({ trade }: Props) {
     }
 
     try {
-      const res = await fetch(`${apiUrl}/api/trades/${trade.id}/buy`, {
+      const res = await fetch(`${apiUrl}/api/v1/trades/${trade.id}/buy`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

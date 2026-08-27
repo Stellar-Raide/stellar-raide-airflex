@@ -1,0 +1,19 @@
+# Exclude files that should never be in the Docker build context
+.env
+.env.*
+!.env.example
+
+# Development artefacts
+node_modules/
+dist/
+*.log
+
+# Test files
+src/**/*.test.ts
+coverage/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

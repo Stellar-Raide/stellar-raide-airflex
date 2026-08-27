@@ -14,6 +14,7 @@ The server **will not start** if any of these are missing:
 | `JWT_SECRET` | Secret key used to sign and verify JWTs. Use a random string of at least 32 characters. |
 | `DATABASE_URL` | PostgreSQL connection string. |
 | `ESCROW_CONTRACT_ADDRESS` | Deployed Soroban escrow contract ID (starts with `C`). |
+| `PLATFORM_TREASURY_USER_ID` | User ID that receives platform fees. |
 
 ---
 
@@ -26,6 +27,7 @@ The server **will not start** if any of these are missing:
 | `PORT` | `3001` | Port the Express server listens on. |
 | `NODE_ENV` | `development` | Set to `production` in deployed environments. Affects morgan log format and other behaviour. |
 | `CORS_ORIGIN` | `*` | Allowed CORS origin. Set to your frontend URL in production, e.g. `https://stellar-raide-stellar-raide-airflex.app`. |
+| `PLATFORM_FEE_PERCENT` | `1.5` | Percentage deducted from each completed trade. |
 
 ### Database
 

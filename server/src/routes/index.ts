@@ -6,6 +6,7 @@ import profileRouter from './profile';
 import webhooksRouter from './webhooks';
 import adminRouter from './admin';
 import eventsRouter from './events';
+import docsRouter from './docs';
 
 export function registerRoutes(app: Express): void {
   // API v1 routes
@@ -15,7 +16,13 @@ export function registerRoutes(app: Express): void {
   app.use('/api/v1/profile', profileRouter);
   app.use('/api/v1/webhooks', webhooksRouter);
   app.use('/api/v1/admin', adminRouter);
-  
-  // SSE real-time event stream (kept at /api/events for compatibility)
+  app.use('/api/v1/events', eventsRouter);
+
+  // Legacy SSE path — kept for backwards compatibility; prefer /api/v1/events
   app.use('/api/events', eventsRouter);
+
+  // OpenAPI 3.1 spec + Swagger UI
+  // GET /api/docs.json  — always available
+  // GET /api/docs       — Swagger UI (disabled in production unless ENABLE_API_DOCS=true)
+  app.use('/api', docsRouter);
 }

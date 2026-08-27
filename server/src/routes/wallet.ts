@@ -63,7 +63,7 @@ async function resolvePaystackAccount(accountNumber: string, bankCode: string): 
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/wallet  (authenticated)
+// GET /api/v1/wallet  (authenticated)
 // ---------------------------------------------------------------------------
 
 /**
@@ -109,7 +109,7 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
-// GET /api/wallet/banks  (authenticated)
+// GET /api/v1/wallet/banks  (authenticated)
 // ---------------------------------------------------------------------------
 
 /**
@@ -130,7 +130,7 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
-// GET /api/wallet/resolve-account  (authenticated)
+// GET /api/v1/wallet/resolve-account  (authenticated)
 // ---------------------------------------------------------------------------
 
 /**
@@ -164,7 +164,7 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
-// POST /api/wallet/withdraw  (authenticated)
+// POST /api/v1/wallet/withdraw  (authenticated)
 // ---------------------------------------------------------------------------
 
 /**

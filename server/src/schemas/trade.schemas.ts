@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Schema for POST /api/trades (create listing)
+ * Schema for POST /api/v1/trades (create listing)
  *
  * Matches the server-side Zod rules AND the frontend sell form validation so
  * both layers share a single source of truth (this file is the canonical one).
@@ -32,7 +32,7 @@ export type CreateTradeInput = z.infer<typeof createTradeSchema>;
 // ---------------------------------------------------------------------------
 
 /**
- * Schema for POST /api/trades/:id/buy
+ * Schema for POST /api/v1/trades/:id/buy
  *
  * NOTE: The buyerSecretKey field is a placeholder for the initial
  * implementation. Production flow should use client-side XDR signing.
@@ -48,7 +48,7 @@ export type BuyTradeInput = z.infer<typeof buyTradeSchema>;
 // ---------------------------------------------------------------------------
 
 /**
- * Schema for GET /api/trades query parameters (pagination)
+ * Schema for GET /api/v1/trades query parameters (pagination)
  *
  * This schema is applied to req.query, not req.body.
  * Strings are coerced to integers via transform().

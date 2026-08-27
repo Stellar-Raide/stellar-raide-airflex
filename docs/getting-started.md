@@ -70,6 +70,8 @@ CREATE TABLE trade_offers (
   buyer_id UUID REFERENCES users(id),
   asset_type VARCHAR(50) NOT NULL,
   amount NUMERIC NOT NULL,
+  fee_amount NUMERIC,
+  seller_net_amount NUMERIC,
   status VARCHAR(20) NOT NULL DEFAULT 'Active',
   contract_listing_id TEXT,
   escrow_tx_hash TEXT,
@@ -80,6 +82,18 @@ CREATE TABLE trade_offers (
 
 CREATE INDEX idx_trade_offers_status ON trade_offers(status);
 CREATE INDEX idx_trade_offers_expires ON trade_offers(expires_at);
+
+CREATE TABLE transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  trade_id UUID REFERENCES trade_offers(id),
+  amount NUMERIC NOT NULL CHECK (amount >= 0),
+  direction VARCHAR(10) NOT NULL CHECK (direction IN ('debit', 'credit')),
+  type VARCHAR(30) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_transactions_trade ON transactions(trade_id);
 ```
 
 ---

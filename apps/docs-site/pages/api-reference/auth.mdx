@@ -1,0 +1,104 @@
+---
+title: Auth
+---
+
+import { Callout } from "nextra/components";
+
+# Auth
+
+<Callout type="info">
+  Generated from [`openapi/openapi.json`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/apps/docs-site/openapi/openapi.json).
+  Run `npm run generate:api` in `apps/docs-site` after changing the spec to
+  refresh this page. The raw spec is also served at
+  [`/openapi.json`](/openapi.json).
+</Callout>
+
+Phone-number OTP authentication.
+
+## `POST /api/auth/request-otp`
+
+**Request an OTP**
+
+Sends a one-time password to the given phone number via Termii. Creates the user record on first request.
+
+**Request body**
+
+```json
+{
+  "phone": "+2348012345678"
+}
+```
+
+**Responses**
+
+**`200`** — OTP sent
+
+```json
+{
+  "message": "OTP sent successfully"
+}
+```
+
+**`422`** — Validation failed
+
+```json
+{
+  "error": "Validation failed",
+  "details": {}
+}
+```
+
+**`502`** — Upstream OTP provider error
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+
+## `POST /api/auth/verify-otp`
+
+**Verify an OTP**
+
+Verifies a 6-digit OTP for a phone number and returns a session JWT on success.
+
+**Request body**
+
+```json
+{
+  "phone": "+2348012345678",
+  "otp": "123456"
+}
+```
+
+**Responses**
+
+**`200`** — Verified — returns a session token
+
+```json
+{
+  "token": "string"
+}
+```
+
+**`400`** — Invalid phone/OTP or no pending OTP
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`422`** — Validation failed
+
+```json
+{
+  "error": "Validation failed",
+  "details": {}
+}
+```
+
+---
+
