@@ -5,6 +5,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import { registerRoutes } from "./routes";
+import { initJobQueue } from "./jobs";
 import logger from "./utils/logger";
 import { errorHandler } from "./middleware/errorHandler";
 import { apiVersion } from "./middleware/apiVersion";
