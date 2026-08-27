@@ -1,0 +1,180 @@
+---
+title: Wallet
+---
+
+import { Callout } from "nextra/components";
+
+# Wallet
+
+<Callout type="info">
+  Generated from [`openapi/openapi.json`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/apps/docs-site/openapi/openapi.json).
+  Run `npm run generate:api` in `apps/docs-site` after changing the spec to
+  refresh this page. The raw spec is also served at
+  [`/openapi.json`](/openapi.json).
+</Callout>
+
+Stellar wallet balance and Naira bank withdrawals via Paystack.
+
+## `GET /api/wallet` 🔒
+
+**Get wallet balance**
+
+Returns the authenticated user's Stellar public key and current XLM balance. The secret key is never included in the response.
+
+**Responses**
+
+**`200`** — OK
+
+```json
+{
+  "publicKey": "string",
+  "balance": "10000.0000000",
+  "asset": "XLM",
+  "network": "testnet"
+}
+```
+
+**`404`** — Wallet not found / still provisioning
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`502`** — Unable to fetch balance from Horizon
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+
+## `GET /api/wallet/banks` 🔒
+
+**List Nigerian banks**
+
+Returns the Paystack bank list for the withdrawal bank-selection dropdown.
+
+**Responses**
+
+**`200`** — OK
+
+```json
+{
+  "banks": [
+    {
+      "code": "string",
+      "name": "string"
+    }
+  ]
+}
+```
+
+**`502`** — Unable to fetch bank list from Paystack
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+
+## `GET /api/wallet/resolve-account` 🔒
+
+**Resolve a bank account name**
+
+Resolves a Nigerian bank account number to the account holder's name via Paystack.
+
+**Parameters**
+
+| Name | In | Type | Notes |
+|------|----|------|-------|
+| `account_number` | query | string | **required** |
+| `bank_code` | query | string | **required** |
+
+
+**Responses**
+
+**`200`** — OK
+
+```json
+{
+  "account_name": "string"
+}
+```
+
+**`400`** — Missing or invalid query parameters
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`502`** — Unable to resolve account via Paystack
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+
+## `POST /api/wallet/withdraw` 🔒
+
+**Withdraw to a bank account**
+
+Submits a withdrawal request to a Nigerian bank account after validating the current wallet balance covers the amount.
+
+**Request body**
+
+```json
+{
+  "amount": 1.5,
+  "bank_code": "string",
+  "account_number": "string",
+  "account_name": "string"
+}
+```
+
+**Responses**
+
+**`200`** — Withdrawal accepted
+
+```json
+{
+  "success": true
+}
+```
+
+**`400`** — Missing fields, invalid amount, or insufficient balance
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`404`** — Wallet not found
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`502`** — Unable to fetch current balance
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+

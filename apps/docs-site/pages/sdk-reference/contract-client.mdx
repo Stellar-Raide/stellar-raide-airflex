@@ -1,0 +1,77 @@
+---
+title: Contract Client
+---
+
+import { Callout } from "nextra/components";
+
+# Contract Client
+
+For tooling that needs to talk to the [Escrow contract](/contract-reference/escrow)
+directly — indexers, alternate front-ends, or contract development — use the
+Stellar SDK or `stellar-cli` instead of going through the REST API.
+
+## Via `stellar-cli`
+
+Good for one-off calls and debugging. Every public function on the escrow
+contract (see the [Contract Reference](/contract-reference/escrow) for the
+full list and signatures) can be invoked directly:
+
+```bash
+stellar contract invoke \
+  --id CCBJ235OCBFZXBFSUUUT4PMG7RRCAXZXMUEB2L7CTTQ5NRSNO4P2SLNP \
+  --source your-key-alias \
+  --network testnet \
+  -- get_trade --trade_id 1
+```
+
+## Via `@stellar/stellar-sdk` (TypeScript / JavaScript)
+
+Good for building a real client. The pattern mirrors what
+`server/src/services/stellar.ts` does internally:
+
+```ts
+import {
+  Contract,
+  SorobanRpc,
+  TransactionBuilder,
+  Networks,
+  Keypair,
+  BASE_FEE,
+  nativeToScVal,
+} from "@stellar/stellar-sdk";
+
+const ESCROW_CONTRACT_ID = "CCBJ235OCBFZXBFSUUUT4PMG7RRCAXZXMUEB2L7CTTQ5NRSNO4P2SLNP";
+const rpc = new SorobanRpc.Server("https://soroban-testnet.stellar.org");
+const contract = new Contract(ESCROW_CONTRACT_ID);
+
+async function getTrade(tradeId: number) {
+  const account = await rpc.getAccount(Keypair.random().publicKey()); // any funded source account
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(contract.call("get_trade", nativeToScVal(tradeId, { type: "u64" })))
+    .setTimeout(30)
+    .build();
+
+  // Read-only calls can be simulated without submitting a transaction.
+  const sim = await rpc.simulateTransaction(tx);
+  return sim;
+}
+```
+
+State-changing calls (`create_listing`, `deposit_to_escrow`,
+`release_payment`, `cancel_and_refund`, `flag_dispute`) additionally require
+signing with the caller's keypair and submitting the transaction — see the
+[Soroban SDK docs](https://developers.stellar.org/docs/build/smart-contracts)
+for the full submit-and-poll flow, and [`SOROBAN_DEPLOY_GUIDE.md`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/SOROBAN_DEPLOY_GUIDE.md)
+for how the contract itself is built and deployed.
+
+<Callout type="warning">
+  Never send a raw Stellar secret key to a server you don't control. The
+  [`POST /api/trades/:id/buy`](/api-reference/trades) endpoint's
+  `buyerSecretKey` field is explicitly called out in the API Reference as a
+  placeholder for the initial implementation — the production pattern is
+  client-side signing, where the client signs the transaction XDR locally
+  and only submits the signed envelope.
+</Callout>

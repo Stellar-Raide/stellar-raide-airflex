@@ -1,0 +1,163 @@
+---
+title: Getting Started
+---
+
+import { Callout, Steps } from "nextra/components";
+
+# Getting Started
+
+This guide walks you through running AirFlex locally from a fresh clone.
+
+## Prerequisites
+
+| Tool | Minimum Version | Install |
+|------|----------------|---------|
+| Node.js | 20.x | https://nodejs.org |
+| npm | 10.x | Bundled with Node.js |
+| PostgreSQL | 15.x | https://www.postgresql.org |
+| Git | any | https://git-scm.com |
+| Rust | 1.80+ | https://rustup.rs |
+| stellar-cli | 27.x | See below |
+
+### Install stellar-cli
+
+**Windows**
+
+```bash
+winget install -e --id Stellar.StellarCLI --accept-source-agreements --accept-package-agreements
+```
+
+**macOS / Linux**
+
+```bash
+cargo install --locked stellar-cli
+```
+
+<Steps>
+
+### Clone the repository
+
+```bash
+git clone https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex.git
+cd stellar-raide-stellar-raide-stellar-raide-airflex
+```
+
+### Set up the database
+
+```bash
+createdb stellar-raide-stellar-raide-airflex
+```
+
+Run the schema (once a migrations tool exists, use that instead):
+
+```sql
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone VARCHAR(20) UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE wallets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  stellar_public_key VARCHAR(60),
+  stellar_secret_key TEXT, -- encrypt at rest in production
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE trade_offers (
+  id UUID PRIMARY KEY,
+  seller_id UUID REFERENCES users(id),
+  buyer_id UUID REFERENCES users(id),
+  asset_type VARCHAR(50) NOT NULL,
+  amount NUMERIC NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'Active',
+  contract_listing_id TEXT,
+  escrow_tx_hash TEXT,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_trade_offers_status ON trade_offers(status);
+CREATE INDEX idx_trade_offers_expires ON trade_offers(expires_at);
+```
+
+### Configure the server
+
+```bash
+cd server
+cp .env.example .env
+```
+
+Open `server/.env` and fill in your values — see the [Deployment](/deployment)
+page for the full variable reference.
+
+### Start the API server
+
+```bash
+cd server
+npm install
+npm run dev
+```
+
+The server starts on `http://localhost:3001`.
+
+```bash
+curl http://localhost:3001/health
+# → {"status":"ok","timestamp":"..."}
+```
+
+### Start the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend starts on `http://localhost:3000`.
+
+### Verify the contract
+
+The escrow contract is already deployed on testnet:
+
+```bash
+stellar contract invoke \
+  --id CCBJ235OCBFZXBFSUUUT4PMG7RRCAXZXMUEB2L7CTTQ5NRSNO4P2SLNP \
+  --source your-key-alias \
+  --network testnet \
+  -- trade_count
+```
+
+</Steps>
+
+## Available server scripts
+
+| Script | Command | Description |
+|--------|---------|-------------|
+| Development | `npm run dev` | Hot-reload dev server via ts-node-dev |
+| Build | `npm run build` | Compile TypeScript to `dist/` |
+| Start | `npm run start` | Run compiled production build |
+
+## Running the docs site itself
+
+This documentation site lives in `apps/docs-site` and is a standalone
+Next.js + [Nextra](https://nextra.site) app:
+
+```bash
+cd apps/docs-site
+npm install
+npm run dev
+```
+
+It starts on `http://localhost:3002`. The API Reference and Contract
+Reference sections are generated automatically before `dev`/`build` — see
+[Contributing](/contributing#regenerating-generated-docs) if you change the
+OpenAPI spec or the contract source.
+
+<Callout type="default">
+  Next up: [API Reference](/api-reference) to explore every endpoint, or
+  [Contract Reference](/contract-reference) to see the on-chain escrow logic.
+</Callout>

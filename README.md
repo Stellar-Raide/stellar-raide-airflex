@@ -88,9 +88,11 @@ Full architecture diagram → [docs/architecture.md](./docs/architecture.md)
 
 ```
 stellar-raide-stellar-raide-airflex/
-├── contracts/          # Soroban smart contracts (escrow, marketplace, token)
+├── apps/
+│   └── docs-site/       # Public documentation site (Next.js + Nextra), deployed to docs.stellar-raide-stellar-raide-airflex.io
+├── contracts/           # Soroban smart contracts (escrow, marketplace, token)
 ├── frontend/
-│   └── app/            # Next.js application
+│   └── app/             # Next.js application
 ├── server/
 │   ├── src/
 │   │   ├── middleware/ # Express middleware (auth, etc.)
@@ -228,6 +230,11 @@ Deployment guide → [SOROBAN_DEPLOY_GUIDE.md](./SOROBAN_DEPLOY_GUIDE.md)
 ---
 
 ## Documentation
+
+The full documentation site (API Reference, Contract Reference, SDK Reference,
+Deployment, and Contributing guides) is published at **docs.stellar-raide-stellar-raide-airflex.io** —
+built from [`apps/docs-site`](./apps/docs-site) via [Nextra](https://nextra.site).
+The table below links to the equivalent hand-written Markdown in this repo.
 
 | Document | Description |
 |----------|-------------|

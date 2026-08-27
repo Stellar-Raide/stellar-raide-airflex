@@ -1,0 +1,9 @@
+{
+  "index": "Introduction",
+  "getting-started": "Getting Started",
+  "api-reference": "API Reference",
+  "contract-reference": "Contract Reference",
+  "sdk-reference": "SDK Reference",
+  "deployment": "Deployment",
+  "contributing": "Contributing"
+}

@@ -1,0 +1,301 @@
+---
+title: Trades
+---
+
+import { Callout } from "nextra/components";
+
+# Trades
+
+<Callout type="info">
+  Generated from [`openapi/openapi.json`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/apps/docs-site/openapi/openapi.json).
+  Run `npm run generate:api` in `apps/docs-site` after changing the spec to
+  refresh this page. The raw spec is also served at
+  [`/openapi.json`](/openapi.json).
+</Callout>
+
+Create, browse, and settle P2P trade offers.
+
+## `GET /api/trades`
+
+**List active trades**
+
+Returns paginated active trade listings. No authentication required.
+
+**Parameters**
+
+| Name | In | Type | Notes |
+|------|----|------|-------|
+| `page` | query | integer | optional (min 1, default `1`) |
+| `limit` | query | integer | optional (min 1, max 100, default `20`) |
+
+
+**Responses**
+
+**`200`** — OK
+
+```json
+{
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "seller_id": "550e8400-e29b-41d4-a716-446655440000",
+      "buyer_id": "550e8400-e29b-41d4-a716-446655440000",
+      "asset_type": "MTN_AIRTIME",
+      "amount": 500,
+      "status": "Active",
+      "contract_listing_id": "string",
+      "escrow_tx_hash": "string",
+      "expires_at": "2026-08-24T10:00:00.000Z",
+      "created_at": "2026-08-24T10:00:00.000Z",
+      "updated_at": "2026-08-24T10:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 42,
+    "totalPages": 3
+  }
+}
+```
+
+**`400`** — Invalid query parameters
+
+```json
+{
+  "error": "Validation failed",
+  "details": {}
+}
+```
+
+---
+
+## `POST /api/trades` 🔒
+
+**Create a trade offer**
+
+Creates a new trade offer. Registers the listing on the Soroban escrow contract via `create_listing` and stores the record in PostgreSQL.
+
+**Request body**
+
+```json
+{
+  "assetType": "MTN_AIRTIME",
+  "amount": 500,
+  "expiresInHours": 24
+}
+```
+
+**Responses**
+
+**`201`** — Created
+
+```json
+{
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "seller_id": "550e8400-e29b-41d4-a716-446655440000",
+    "buyer_id": "550e8400-e29b-41d4-a716-446655440000",
+    "asset_type": "MTN_AIRTIME",
+    "amount": 500,
+    "status": "Active",
+    "contract_listing_id": "string",
+    "escrow_tx_hash": "string",
+    "expires_at": "2026-08-24T10:00:00.000Z",
+    "created_at": "2026-08-24T10:00:00.000Z",
+    "updated_at": "2026-08-24T10:00:00.000Z"
+  }
+}
+```
+
+**`400`** — Validation error or wallet not found
+
+```json
+{
+  "error": "Validation failed",
+  "details": {}
+}
+```
+
+**`401`** — Missing or invalid Authorization header
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+
+## `GET /api/trades/{id}`
+
+**Get a trade by ID**
+
+Returns a single trade offer by ID. No authentication required.
+
+**Parameters**
+
+| Name | In | Type | Notes |
+|------|----|------|-------|
+| `id` | path | string | **required** |
+
+
+**Responses**
+
+**`200`** — OK
+
+```json
+{
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "seller_id": "550e8400-e29b-41d4-a716-446655440000",
+    "buyer_id": "550e8400-e29b-41d4-a716-446655440000",
+    "asset_type": "MTN_AIRTIME",
+    "amount": 500,
+    "status": "Active",
+    "contract_listing_id": "string",
+    "escrow_tx_hash": "string",
+    "expires_at": "2026-08-24T10:00:00.000Z",
+    "created_at": "2026-08-24T10:00:00.000Z",
+    "updated_at": "2026-08-24T10:00:00.000Z"
+  }
+}
+```
+
+**`404`** — Trade offer not found
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+
+## `POST /api/trades/{id}/buy` 🔒
+
+**Buy a trade (lock escrow)**
+
+Locks the buyer's escrow funds on-chain by calling `deposit_to_escrow` on the Soroban contract and updates the trade status to `Locked`.
+
+**Parameters**
+
+| Name | In | Type | Notes |
+|------|----|------|-------|
+| `id` | path | string | **required** |
+
+
+**Request body**
+
+```json
+{
+  "buyerSecretKey": "string"
+}
+```
+
+**Responses**
+
+**`200`** — Escrow locked
+
+```json
+{
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "seller_id": "550e8400-e29b-41d4-a716-446655440000",
+    "buyer_id": "550e8400-e29b-41d4-a716-446655440000",
+    "asset_type": "MTN_AIRTIME",
+    "amount": 500,
+    "status": "Active",
+    "contract_listing_id": "string",
+    "escrow_tx_hash": "string",
+    "expires_at": "2026-08-24T10:00:00.000Z",
+    "created_at": "2026-08-24T10:00:00.000Z",
+    "updated_at": "2026-08-24T10:00:00.000Z"
+  }
+}
+```
+
+**`400`** — Trade not available for purchase
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`401`** — Missing or invalid Authorization header
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`404`** — Trade offer not found
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+
+## `POST /api/trades/{id}/confirm-delivery` 🔒
+
+**Confirm delivery (seller)**
+
+Seller confirms delivery of the traded asset. Returns 202 immediately; `release_payment` is invoked on the escrow contract asynchronously (up to 3 attempts), and the result is pushed via the Events stream.
+
+**Parameters**
+
+| Name | In | Type | Notes |
+|------|----|------|-------|
+| `id` | path | string | **required** |
+
+
+**Responses**
+
+**`202`** — Accepted — payment release is processing
+
+```json
+{
+  "message": "string",
+  "tradeId": "string"
+}
+```
+
+**`400`** — Trade not in a confirmable state
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`401`** — Missing or invalid Authorization header
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`403`** — Caller is not the seller on this trade
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`404`** — Trade offer not found
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+
