@@ -1,8 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short,
-    token, Address, Env, Symbol,
+    contract, contracterror, contractimpl, contracttype, symbol_short,
+    token, Address, Env, Symbol, Vec,
 };
 
 // ---------------------------------------------------------------------------
@@ -168,6 +168,10 @@ impl EscrowContract {
         require_not_paused(&env);
         seller.require_auth();
 
+        if !env.storage().instance().has(&DataKey::AllowedToken(token.clone())) {
+            return Err(Error::UnsupportedToken);
+        }
+
         if amount <= 0 {
             panic!("amount must be positive");
         }
@@ -201,7 +205,23 @@ impl EscrowContract {
 
         env.events().publish((topic_created(), asset_type), (id, seller, amount));
 
-        id
+        Ok(id)
+    }
+
+    // -----------------------------------------------------------------------
+    // Admin functions
+    // -----------------------------------------------------------------------
+
+    pub fn add_allowed_token(env: Env, token: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialised");
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::AllowedToken(token), &true);
+    }
+
+    pub fn remove_allowed_token(env: Env, token: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialised");
+        admin.require_auth();
+        env.storage().instance().remove(&DataKey::AllowedToken(token));
     }
 
     // -----------------------------------------------------------------------
@@ -490,7 +510,8 @@ mod test {
 
         sac.mint(&buyer, &10_000_0000000i128);
 
-        client.initialize(&admin);
+        let allowed_tokens = vec![&env, token_address.clone()];
+        client.initialize(&admin, &allowed_tokens);
 
         (env, client, admin, seller, buyer, token_address)
     }
