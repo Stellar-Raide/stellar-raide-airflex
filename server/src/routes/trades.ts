@@ -128,7 +128,8 @@ router.get(
     const { id } = req.params;
 
     const { rows } = await pool.query<TradeOffer>(
-      `SELECT * FROM trade_offers WHERE id = $1`,
+      `SELECT *, fee_amount AS "feeAmount", seller_net_amount AS "sellerNetAmount"
+         FROM trade_offers WHERE id = $1`,
       [id]
     );
 

@@ -34,6 +34,7 @@
 import pool from "../db";
 import { releasePayment } from "./stellar";
 import { SseEmitter } from "./sseEmitter";
+import { WalletService } from "./wallet";
 import type { TradeOffer } from "../types/trade";
 
 // ---------------------------------------------------------------------------
@@ -47,6 +48,12 @@ const MAX_RETRIES = 3;
  * value plus a random jitter of ±20 % to spread load.
  */
 const BASE_RETRY_DELAY_MS = 2_000;
+
+export function calculatePlatformFee(amount: number): number {
+  const configured = Number.parseFloat(process.env["PLATFORM_FEE_PERCENT"] ?? "1.5");
+  const percentage = Number.isFinite(configured) ? configured : 1.5;
+  return Math.round((amount * percentage / 100 + Number.EPSILON) * 100) / 100;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -143,21 +150,50 @@ async function runVerificationWithRetry(
     // ------------------------------------------------------------------
     // Success — update DB to Completed
     // ------------------------------------------------------------------
-    const { rows: updated } = await pool.query<TradeOffer>(
-      `UPDATE trade_offers
-          SET status     = 'Completed',
-              updated_at = NOW()
-        WHERE id = $1
-          AND status = 'Locked'
-        RETURNING *`,
-      [tradeId]
-    );
+    const client = await pool.connect();
+    let updated: TradeOffer[] = [];
+    try {
+      await client.query("BEGIN");
+      const { rows: locked } = await client.query<TradeOffer>(
+        `SELECT * FROM trade_offers WHERE id = $1 AND status = 'Locked' FOR UPDATE`,
+        [tradeId]
+      );
+      if (!locked.length) {
+        await client.query("ROLLBACK");
+        log("warn", tradeId, "Settlement skipped — status already changed");
+        return;
+      }
 
-    if (!updated.length) {
-      // Another process already changed the status — log and bail
-      log("warn", tradeId, "DB update to Completed skipped — status already changed");
-      return;
+      const settledTrade = locked[0]!;
+      const tradeAmount = Number(settledTrade.amount);
+      const feeAmount = calculatePlatformFee(tradeAmount);
+      const sellerNetAmount = Math.round((tradeAmount - feeAmount + Number.EPSILON) * 100) / 100;
+      const treasuryUserId = process.env["PLATFORM_TREASURY_USER_ID"];
+      if (!treasuryUserId) throw new Error("PLATFORM_TREASURY_USER_ID is not set");
+      if (!settledTrade.buyer_id) throw new Error("Trade has no buyer to debit");
+
+      const wallet = new WalletService(client);
+      await wallet.debit(settledTrade.buyer_id, tradeAmount, tradeId);
+      await wallet.credit({ userId: settledTrade.seller_id, amount: sellerNetAmount, type: "trade_settlement", tradeId });
+      await wallet.credit({ userId: treasuryUserId, amount: feeAmount, type: "platform_fee", tradeId });
+
+      const result = await client.query<TradeOffer>(
+        `UPDATE trade_offers
+            SET status = 'Completed', fee_amount = $2, seller_net_amount = $3, updated_at = NOW()
+          WHERE id = $1 AND status = 'Locked'
+          RETURNING *`,
+        [tradeId, feeAmount, sellerNetAmount]
+      );
+      updated = result.rows;
+      await client.query("COMMIT");
+    } catch (settlementError) {
+      await client.query("ROLLBACK");
+      throw settlementError;
+    } finally {
+      client.release();
     }
+
+    if (!updated.length) return;
 
     log("info", tradeId, `Release successful. tx=${txHash}`);
 
