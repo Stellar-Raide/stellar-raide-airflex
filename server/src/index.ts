@@ -68,6 +68,12 @@ pool.query(testQueryText)
 
 const app = express();
 const PORT = parseInt(process.env["PORT"] ?? "3001", 10);
+if (!Number.isFinite(PORT) || !Number.isInteger(PORT) || PORT < 1024 || PORT > 65535) {
+  console.error(
+    `[startup] Invalid PORT value: "${process.env["PORT"] ?? ""}". Must be an integer between 1024 and 65535.`
+  );
+  process.exit(1);
+}
 
 // ---------------------------------------------------------------------------
 // Middleware
