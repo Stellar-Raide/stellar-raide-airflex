@@ -278,7 +278,7 @@ export default function SellPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${apiUrl}/api/trades`, {
+      const res = await fetch(`${apiUrl}/api/v1/trades`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

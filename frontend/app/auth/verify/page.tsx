@@ -107,7 +107,7 @@ export default function VerifyPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${apiUrl}/api/auth/verify-otp`, {
+      const res = await fetch(`${apiUrl}/api/v1/auth/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, otp: otp.trim() }),
@@ -157,7 +157,7 @@ export default function VerifyPage() {
     setResending(true);
 
     try {
-      const res = await fetch(`${apiUrl}/api/auth/request-otp`, {
+      const res = await fetch(`${apiUrl}/api/v1/auth/request-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone }),

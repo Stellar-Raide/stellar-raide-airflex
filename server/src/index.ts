@@ -6,6 +6,7 @@ import morgan from "morgan";
 import { registerRoutes } from "./routes";
 import logger from "./utils/logger";
 import { errorHandler } from "./middleware/errorHandler";
+import { apiVersion } from "./middleware/apiVersion";
 
 // ---------------------------------------------------------------------------
 // Environment validation
@@ -51,6 +52,7 @@ app.use(
     origin: process.env["CORS_ORIGIN"] ?? "*",
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["X-Api-Version"],
   })
 );
 
@@ -60,13 +62,20 @@ app.use(morgan(process.env["NODE_ENV"] === "production" ? "combined" : "dev"));
 // JSON body parsing
 app.use(express.json());
 
+// Inject X-Api-Version header on every response
+app.use(apiVersion);
+
 // ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 
 /** Health-check — used by load balancers and uptime monitors */
 app.get("/health", (_req: Request, res: Response) => {
-  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  res.status(200).json({
+    status: "ok",
+    version: "1.0.0",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Register all API routes

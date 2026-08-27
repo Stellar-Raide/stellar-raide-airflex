@@ -19,7 +19,7 @@ async function getTrade(id: string): Promise<TradeOffer | null> {
 
   let res: Response;
   try {
-    res = await fetch(`${apiUrl}/api/trades/${encodeURIComponent(id)}`, {
+    res = await fetch(`${apiUrl}/api/v1/trades/${encodeURIComponent(id)}`, {
       // Always serve fresh data so expiry countdowns and status changes
       // are reflected immediately. Adjust to `revalidate: 30` if traffic
       // warrants ISR caching at the cost of slight staleness.

@@ -55,7 +55,7 @@ export default function WalletPage() {
     setLoading(true);
     setError(null);
 
-    fetch(`${apiUrl}/api/wallet`, {
+    fetch(`${apiUrl}/api/v1/wallet`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json() as Promise<WalletResponse>)
@@ -81,7 +81,7 @@ export default function WalletPage() {
     if (!token) return;
 
     setLoading(true);
-    fetch(`${apiUrl}/api/wallet`, {
+    fetch(`${apiUrl}/api/v1/wallet`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json() as Promise<WalletResponse>)

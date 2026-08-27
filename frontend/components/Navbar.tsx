@@ -9,7 +9,7 @@
  *   a ThemeToggle button on every page via the root layout.
  * - Reads auth state from localStorage (client-side only) and shows either
  *   the user's masked phone + wallet balance + logout, or a Sign In button.
- * - Fetches wallet balance from GET /api/wallet after mount.
+ * - Fetches wallet balance from GET /api/v1/wallet after mount.
  * - On mobile (< md breakpoint) nav links collapse into a hamburger button
  *   that opens/closes a full-width slide-in drawer.
  * - Drawer traps focus (via aria-modal) and closes on Escape key or clicking
@@ -210,7 +210,7 @@ export default function Navbar() {
     if (!token) return;
 
     setBalanceLoading(true);
-    fetch(`${apiUrl}/api/wallet`, {
+    fetch(`${apiUrl}/api/v1/wallet`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json() as Promise<WalletResponse>)

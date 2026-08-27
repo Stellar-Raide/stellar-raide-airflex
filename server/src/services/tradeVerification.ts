@@ -3,7 +3,7 @@
  *
  * Responsibility
  * --------------
- * Once a seller calls POST /api/trades/:id/confirm-delivery, this service:
+ * Once a seller calls POST /api/v1/trades/:id/confirm-delivery, this service:
  *
  *  1. Validates the trade is in the correct state (Locked).
  *  2. Attempts to call `release_payment` on the Soroban escrow contract
