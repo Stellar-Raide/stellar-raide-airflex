@@ -1,0 +1,34 @@
+---
+title: Contract Reference
+---
+
+import { Callout } from "nextra/components";
+
+# Contract Reference
+
+AirFlex's on-chain logic is written in Rust using the [Soroban SDK](https://developers.stellar.org/docs/build/smart-contracts)
+and deployed to the Stellar network. This section documents the public
+functions of every contract in `contracts/`.
+
+<Callout type="info">
+  The **Escrow** contract page below is generated automatically from the
+  `///` doc comments in [`contracts/escrow/src/lib.rs`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/contracts/escrow/src/lib.rs)
+  by `scripts/generate-contract-reference.mjs`. Editing those comments and
+  re-running `npm run generate:contracts` keeps this page current — see
+  [Contributing](/contributing#regenerating-generated-docs).
+</Callout>
+
+## Contracts
+
+| Contract | Status | Network | Address |
+|----------|--------|---------|---------|
+| [Escrow](/contract-reference/escrow) | ✅ Deployed | Testnet | `CCBJ235OCBFZXBFSUUUT4PMG7RRCAXZXMUEB2L7CTTQ5NRSNO4P2SLNP` |
+| [Marketplace](/contract-reference/marketplace) | 📋 Planned | — | — |
+| [Token](/contract-reference/token) | 📋 Planned | — | — |
+
+Only the **escrow** contract exists in `contracts/` today (see the
+[roadmap](https://github.com/pheobeayo/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/README.md#roadmap)).
+Marketplace and token contracts are placeholders for now — once their Rust
+sources land under `contracts/marketplace/` and `contracts/token/` with
+documented (`///`) public functions, the generator will pick them up on the
+next `npm run generate:contracts` run automatically, no page rewiring needed.

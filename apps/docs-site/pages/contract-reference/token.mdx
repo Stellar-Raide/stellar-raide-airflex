@@ -1,0 +1,25 @@
+---
+title: Token Contract
+---
+
+import { Callout } from "nextra/components";
+
+# Token Contract
+
+<Callout type="warning">
+  This contract does not exist in `contracts/` yet — only the
+  [Escrow](/contract-reference/escrow) contract is currently implemented.
+  This page is a placeholder so the site structure matches the intended
+  contract set.
+</Callout>
+
+AirFlex currently settles trades using existing Stellar Asset Contract (SAC)
+tokens such as USDC — see the `token: Address` field on `TradeOffer` in the
+[Escrow contract reference](/contract-reference/escrow). A dedicated AirFlex
+token contract (e.g. for platform fees, staking, or governance) is not part
+of the codebase yet.
+
+Once `contracts/token/src/lib.rs` exists with `///`-documented `pub fn`
+items, running `npm run generate:contracts` in `apps/docs-site` will replace
+this file automatically with the generated reference — remove this
+hand-written placeholder at that point.

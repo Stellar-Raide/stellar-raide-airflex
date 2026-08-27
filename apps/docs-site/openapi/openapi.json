@@ -1,0 +1,476 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "AirFlex API",
+    "version": "0.1.0",
+    "description": "REST API for the AirFlex P2P airtime & data marketplace. All request and response bodies are JSON. Authenticated endpoints require a Bearer JWT in the Authorization header.",
+    "license": { "name": "MIT" }
+  },
+  "servers": [
+    { "url": "http://localhost:3001", "description": "Local development" }
+  ],
+  "tags": [
+    { "name": "Health", "description": "Server status." },
+    { "name": "Auth", "description": "Phone-number OTP authentication." },
+    { "name": "Trades", "description": "Create, browse, and settle P2P trade offers." },
+    { "name": "Wallet", "description": "Stellar wallet balance and Naira bank withdrawals via Paystack." },
+    { "name": "Profile", "description": "Authenticated user profile and trade history." },
+    { "name": "Events", "description": "Real-time trade status updates via Server-Sent Events." }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT payload must contain `sub` (user id) and `stellarPublicKey`."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "example": "Human-readable message" }
+        },
+        "required": ["error"]
+      },
+      "ValidationError": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "example": "Validation failed" },
+          "details": {
+            "type": "object",
+            "additionalProperties": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "required": ["error"]
+      },
+      "TradeOffer": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "seller_id": { "type": "string", "format": "uuid" },
+          "buyer_id": { "type": "string", "format": "uuid", "nullable": true },
+          "asset_type": { "type": "string", "example": "MTN_AIRTIME" },
+          "amount": { "type": "number", "example": 500 },
+          "status": {
+            "type": "string",
+            "enum": ["Active", "Locked", "Completed", "Cancelled", "Disputed"]
+          },
+          "contract_listing_id": { "type": "string", "nullable": true },
+          "escrow_tx_hash": { "type": "string", "nullable": true },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "page": { "type": "integer", "example": 1 },
+          "limit": { "type": "integer", "example": 20 },
+          "total": { "type": "integer", "example": 42 },
+          "totalPages": { "type": "integer", "example": 3 }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Server health check",
+        "description": "Returns server status. No authentication required.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" },
+                    "timestamp": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/request-otp": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Request an OTP",
+        "description": "Sends a one-time password to the given phone number via Termii. Creates the user record on first request.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["phone"],
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "description": "International E.164-style or Nigerian local format (10-15 digits).",
+                    "example": "+2348012345678"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "message": { "type": "string", "example": "OTP sent successfully" } }
+                }
+              }
+            }
+          },
+          "422": { "description": "Validation failed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationError" } } } },
+          "502": { "description": "Upstream OTP provider error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/auth/verify-otp": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Verify an OTP",
+        "description": "Verifies a 6-digit OTP for a phone number and returns a session JWT on success.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["phone", "otp"],
+                "properties": {
+                  "phone": { "type": "string", "example": "+2348012345678" },
+                  "otp": { "type": "string", "example": "123456", "description": "Exactly 6 digits." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Verified — returns a session token", "content": { "application/json": { "schema": { "type": "object", "properties": { "token": { "type": "string" } } } } } },
+          "400": { "description": "Invalid phone/OTP or no pending OTP", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Validation failed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationError" } } } }
+        }
+      }
+    },
+    "/api/trades": {
+      "get": {
+        "tags": ["Trades"],
+        "summary": "List active trades",
+        "description": "Returns paginated active trade listings. No authentication required.",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1, "minimum": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20, "minimum": 1, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/TradeOffer" } },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid query parameters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationError" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Trades"],
+        "summary": "Create a trade offer",
+        "description": "Creates a new trade offer. Registers the listing on the Soroban escrow contract via `create_listing` and stores the record in PostgreSQL.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["assetType", "amount", "expiresInHours"],
+                "properties": {
+                  "assetType": { "type": "string", "maxLength": 50, "pattern": "^[A-Za-z0-9_-]+$", "example": "MTN_AIRTIME" },
+                  "amount": { "type": "number", "minimum": 0, "exclusiveMinimum": true, "example": 500 },
+                  "expiresInHours": { "type": "integer", "minimum": 1, "maximum": 168, "example": 24 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/TradeOffer" } } } } } },
+          "400": { "description": "Validation error or wallet not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationError" } } } },
+          "401": { "description": "Missing or invalid Authorization header", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/trades/{id}": {
+      "get": {
+        "tags": ["Trades"],
+        "summary": "Get a trade by ID",
+        "description": "Returns a single trade offer by ID. No authentication required.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/TradeOffer" } } } } } },
+          "404": { "description": "Trade offer not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/trades/{id}/buy": {
+      "post": {
+        "tags": ["Trades"],
+        "summary": "Buy a trade (lock escrow)",
+        "description": "Locks the buyer's escrow funds on-chain by calling `deposit_to_escrow` on the Soroban contract and updates the trade status to `Locked`.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["buyerSecretKey"],
+                "properties": {
+                  "buyerSecretKey": {
+                    "type": "string",
+                    "minLength": 56,
+                    "maxLength": 56,
+                    "description": "Buyer's Stellar secret key for signing the escrow transaction. Placeholder for the initial implementation — production should use client-side XDR signing instead of sending raw secret keys to the server."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Escrow locked", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/TradeOffer" } } } } } },
+          "400": { "description": "Trade not available for purchase", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing or invalid Authorization header", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Trade offer not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/trades/{id}/confirm-delivery": {
+      "post": {
+        "tags": ["Trades"],
+        "summary": "Confirm delivery (seller)",
+        "description": "Seller confirms delivery of the traded asset. Returns 202 immediately; `release_payment` is invoked on the escrow contract asynchronously (up to 3 attempts), and the result is pushed via the Events stream.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "202": { "description": "Accepted — payment release is processing", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" }, "tradeId": { "type": "string" } } } } } },
+          "400": { "description": "Trade not in a confirmable state", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing or invalid Authorization header", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Caller is not the seller on this trade", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Trade offer not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/wallet": {
+      "get": {
+        "tags": ["Wallet"],
+        "summary": "Get wallet balance",
+        "description": "Returns the authenticated user's Stellar public key and current XLM balance. The secret key is never included in the response.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "publicKey": { "type": "string" },
+                    "balance": { "type": "string", "example": "10000.0000000" },
+                    "asset": { "type": "string", "example": "XLM" },
+                    "network": { "type": "string", "example": "testnet" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Wallet not found / still provisioning", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "502": { "description": "Unable to fetch balance from Horizon", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/wallet/banks": {
+      "get": {
+        "tags": ["Wallet"],
+        "summary": "List Nigerian banks",
+        "description": "Returns the Paystack bank list for the withdrawal bank-selection dropdown.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "banks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": { "code": { "type": "string" }, "name": { "type": "string" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": { "description": "Unable to fetch bank list from Paystack", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/wallet/resolve-account": {
+      "get": {
+        "tags": ["Wallet"],
+        "summary": "Resolve a bank account name",
+        "description": "Resolves a Nigerian bank account number to the account holder's name via Paystack.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "account_number", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "bank_code", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "account_name": { "type": "string" } } } } } },
+          "400": { "description": "Missing or invalid query parameters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "502": { "description": "Unable to resolve account via Paystack", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/wallet/withdraw": {
+      "post": {
+        "tags": ["Wallet"],
+        "summary": "Withdraw to a bank account",
+        "description": "Submits a withdrawal request to a Nigerian bank account after validating the current wallet balance covers the amount.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["amount", "bank_code", "account_number", "account_name"],
+                "properties": {
+                  "amount": { "type": "number", "exclusiveMinimum": true, "minimum": 0 },
+                  "bank_code": { "type": "string" },
+                  "account_number": { "type": "string" },
+                  "account_name": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Withdrawal accepted", "content": { "application/json": { "schema": { "type": "object", "properties": { "success": { "type": "boolean" } } } } } },
+          "400": { "description": "Missing fields, invalid amount, or insufficient balance", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Wallet not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "502": { "description": "Unable to fetch current balance", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/profile": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "Get authenticated profile",
+        "description": "Returns profile metadata for the authenticated user, including a masked phone number and completed-trade count.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "maskedPhone": { "type": "string", "example": "+234 *** *** 5678" },
+                        "createdAt": { "type": "string", "format": "date-time" },
+                        "totalTradesCompleted": { "type": "integer" },
+                        "stellarPublicKey": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "User not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/profile/trades": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "Get trade history",
+        "description": "Returns the paginated trade history for the authenticated user, covering trades where the user was the seller or the buyer.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10, "maximum": 50 } },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["All", "Active", "Locked", "Completed", "Cancelled"], "default": "All" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/TradeOffer" } },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "tags": ["Events"],
+        "summary": "Subscribe to trade events (SSE)",
+        "description": "Persistent Server-Sent Events stream for the authenticated user. Emits `connected`, `trade_completed`, `trade_disputed`, and `admin_alert` events. The connection stays open indefinitely; browsers reconnect automatically via `EventSource`.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "text/event-stream connection opened",
+            "content": { "text/event-stream": { "schema": { "type": "string" } } }
+          },
+          "401": { "description": "Missing or invalid Authorization header", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  }
+}

@@ -65,7 +65,7 @@
 ```
 Client
   │
-  │  POST /api/trades
+  │  POST /api/v1/trades
   │  Authorization: Bearer <jwt>
   │  { assetType, amount, expiresInHours }
   │
@@ -103,7 +103,7 @@ Response 201 { data: TradeOffer }
 ```
 Client
   │
-  │  POST /api/trades/:id/buy
+  │  POST /api/v1/trades/:id/buy
   │  Authorization: Bearer <jwt>
   │  { buyerSecretKey }
   │
@@ -141,7 +141,7 @@ Server entry point. Loads env, validates required vars, registers middleware,
 mounts routes, starts the HTTP listener.
 
 ### `server/src/routes/trades.ts`
-All `/api/trades` route handlers. Zod validation, business logic, async error
+All `/api/v1/trades` route handlers. Zod validation, business logic, async error
 wrapping. Delegates blockchain calls to `services/stellar.ts` and DB queries
 to the pool in `db.ts`.
 

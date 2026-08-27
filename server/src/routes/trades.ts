@@ -21,7 +21,7 @@ import { asyncHandler } from "../utils/asyncHandler";
 const router = Router();
 
 // ---------------------------------------------------------------------------
-// GET /api/trades
+// GET /api/v1/trades
 // ---------------------------------------------------------------------------
 
 router.get(
@@ -67,7 +67,7 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
-// POST /api/trades  (authenticated)
+// POST /api/v1/trades  (authenticated)
 // ---------------------------------------------------------------------------
 
 router.post(
@@ -119,7 +119,7 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
-// GET /api/trades/:id
+// GET /api/v1/trades/:id
 // ---------------------------------------------------------------------------
 
 router.get(
@@ -128,7 +128,8 @@ router.get(
     const { id } = req.params;
 
     const { rows } = await pool.query<TradeOffer>(
-      `SELECT * FROM trade_offers WHERE id = $1`,
+      `SELECT *, fee_amount AS "feeAmount", seller_net_amount AS "sellerNetAmount"
+         FROM trade_offers WHERE id = $1`,
       [id]
     );
 
@@ -142,7 +143,7 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
-// POST /api/trades/:id/buy  (authenticated)
+// POST /api/v1/trades/:id/buy  (authenticated)
 // ---------------------------------------------------------------------------
 
 router.post(
@@ -206,7 +207,7 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
-// POST /api/trades/:id/confirm-delivery  (authenticated — seller only)
+// POST /api/v1/trades/:id/confirm-delivery  (authenticated — seller only)
 // ---------------------------------------------------------------------------
 
 /**

@@ -1,0 +1,39 @@
+---
+title: Events
+---
+
+import { Callout } from "nextra/components";
+
+# Events
+
+<Callout type="info">
+  Generated from [`openapi/openapi.json`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/apps/docs-site/openapi/openapi.json).
+  Run `npm run generate:api` in `apps/docs-site` after changing the spec to
+  refresh this page. The raw spec is also served at
+  [`/openapi.json`](/openapi.json).
+</Callout>
+
+Real-time trade status updates via Server-Sent Events.
+
+## `GET /api/events` 🔒
+
+**Subscribe to trade events (SSE)**
+
+Persistent Server-Sent Events stream for the authenticated user. Emits `connected`, `trade_completed`, `trade_disputed`, and `admin_alert` events. The connection stays open indefinitely; browsers reconnect automatically via `EventSource`.
+
+**Responses**
+
+**`200`** — text/event-stream connection opened
+
+`text/event-stream` connection — see description above.
+
+**`401`** — Missing or invalid Authorization header
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+
