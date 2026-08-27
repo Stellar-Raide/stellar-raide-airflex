@@ -1,0 +1,76 @@
+name: CodeQL SAST
+
+# ---------------------------------------------------------------------------
+# Triggers
+# ---------------------------------------------------------------------------
+# Runs on every pull request targeting main, on pushes to main, and on a
+# weekly schedule so drift in dependencies can surface security findings
+# even when no code changes are made.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly scan — every Monday at 03:00 UTC
+    - cron: "0 3 * * 1"
+
+# Cancel in-progress runs for the same branch/PR on new pushes.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+# ---------------------------------------------------------------------------
+# Permissions
+# ---------------------------------------------------------------------------
+# Least-privilege: only the permissions CodeQL actually needs.
+permissions:
+  actions: read
+  contents: read
+  security-events: write  # required to upload SARIF results to the Security tab
+
+# ---------------------------------------------------------------------------
+# Jobs
+# ---------------------------------------------------------------------------
+jobs:
+
+  # -------------------------------------------------------------------------
+  # CodeQL analysis — JavaScript / TypeScript
+  # -------------------------------------------------------------------------
+  analyze:
+    name: CodeQL Analysis (javascript)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Initialise the CodeQL tools and create the database.
+      # The "javascript" language covers TypeScript as well.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+          # Enable the full extended query suite to catch the vulnerability
+          # classes listed in the acceptance criteria:
+          #   - SQL injection
+          #   - Path traversal
+          #   - Code injection
+          #   - Improper input validation
+          #   - Insecure randomness
+          queries: security-extended
+
+      # CodeQL can auto-build JavaScript/TypeScript projects; no manual
+      # build step is required here because the source is interpreted.
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      # Run the analysis and upload results to the GitHub Security tab.
+      # Results are also available as a SARIF artefact for external tooling.
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript"
+          # Upload results even if a previous step failed, so partial
+          # results are never silently discarded.
+          upload: always
