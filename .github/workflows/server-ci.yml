@@ -1,0 +1,105 @@
+name: Server CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: server-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: Server quality gates
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Cache server dependencies and TypeScript build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            server/node_modules
+            server/tsconfig.tsbuildinfo
+          key: server-ci-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'server/tsconfig.json') }}
+          restore-keys: |
+            server-ci-${{ runner.os }}-
+
+      - name: Install dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare test environment
+        run: cp .env.test .env
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check
+        run: pnpm tsc --noEmit
+
+      - name: Test
+        id: tests
+        continue-on-error: true
+        env:
+          NODE_ENV: test
+          DOTENV_CONFIG_PATH: .env.test
+          NODE_OPTIONS: --require=dotenv/config
+        run: pnpm test -- --run --json --outputFile=test-results.json
+
+      - name: Convert Jest results to JUnit XML
+        if: always()
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const results = JSON.parse(fs.readFileSync('test-results.json', 'utf8'));
+          const escape = (value) => String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;');
+          const cases = (results.testResults || []).map((test) => {
+            const duration = test.endTime && test.startTime ? test.endTime - test.startTime : 0;
+            const failure = test.status === 'failed'
+              ? `<failure message="${escape((test.message || '').split('\n')[0])}">${escape(test.message || '')}</failure>`
+              : '';
+            return `<testcase classname="${escape(test.testFilePath || 'server')}" name="${escape(test.testFilePath || 'test')}" time="${(duration / 1000).toFixed(3)}">${failure}</testcase>`;
+          }).join('');
+          const failures = results.numFailedTestSuites || 0;
+          const tests = results.numTotalTestSuites || cases.length;
+          fs.writeFileSync('test-results.xml', `<testsuites tests="${tests}" failures="${failures}">${cases}</testsuites>`);
+          NODE
+
+      - name: Upload JUnit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-junit-results
+          path: server/test-results.xml
+          if-no-files-found: error
+
+      - name: Build
+        run: pnpm build
+
+      - name: Fail when tests fail
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
