@@ -2,6 +2,11 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
 export interface AuthPayload {
+  userId: string;
+  phone: string;
+  role: string;
+  iat: number;
+  exp: number;
   sub: string;        // user id
   stellarPublicKey: string;
 }
