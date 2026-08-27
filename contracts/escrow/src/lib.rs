@@ -25,6 +25,7 @@ pub enum DataKey {
 #[derive(Clone, PartialEq, Debug)]
 pub enum TradeStatus {
     Open,
+    PartiallyFilled,
     Locked,
     Completed,
     Disputed,
@@ -36,12 +37,22 @@ pub enum TradeStatus {
 pub struct TradeOffer {
     pub id: u64,
     pub seller: Address,
-    pub buyer: Option<Address>,
     pub token: Address,       // USDC or NGNC contract address
-    pub amount: i128,         // token amount in stroops (7 decimals)
+    pub total_amount: i128,   // total token amount in stroops
+    pub filled_amount: i128,  // filled token amount in stroops
     pub asset_type: Symbol,   // e.g. symbol_short!("AIRTIME")
     pub status: TradeStatus,
     pub expires_at: u64,      // Unix timestamp (ledger time)
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct SubEscrow {
+    pub fill_id: u64,
+    pub buyer: Address,
+    pub amount: i128,
+    pub released: bool,
+    pub refunded: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -99,11 +110,9 @@ pub struct EscrowContract;
 #[contractimpl]
 impl EscrowContract {
     // -----------------------------------------------------------------------
-    // Initialise — must be called once after deployment
+    // Initialise
     // -----------------------------------------------------------------------
 
-    /// Sets the admin address and seeds the trade counter.
-    /// Can only be called once (panics if already initialised).
     pub fn initialize(env: Env, admin: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialised");
@@ -148,15 +157,6 @@ impl EscrowContract {
     // create_listing — called by the Seller
     // -----------------------------------------------------------------------
 
-    /// Registers a new trade offer on the ledger.
-    ///
-    /// * `seller`     — seller's Stellar address (must sign)
-    /// * `token`      — address of the payment token contract (e.g. USDC)
-    /// * `amount`     — token amount the buyer must pay (in base units)
-    /// * `asset_type` — short symbol describing what is being sold
-    /// * `expires_at` — Unix timestamp after which the trade is void
-    ///
-    /// Returns the new trade ID.
     pub fn create_listing(
         env: Env,
         seller: Address,
@@ -177,7 +177,6 @@ impl EscrowContract {
             panic!("expires_at must be in the future");
         }
 
-        // Increment the global trade counter
         let id: u64 = env
             .storage()
             .instance()
@@ -189,30 +188,24 @@ impl EscrowContract {
         let trade = TradeOffer {
             id,
             seller: seller.clone(),
-            buyer: None,
             token,
-            amount,
+            total_amount: amount,
+            filled_amount: 0,
             asset_type: asset_type.clone(),
             status: TradeStatus::Open,
             expires_at,
         };
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::Trade(id), &trade);
-        // Keep the trade entry alive for at least 30 days of ledgers
-        env.storage()
-            .persistent()
-            .extend_ttl(&DataKey::Trade(id), 17_280, 17_280 * 30);
+        env.storage().persistent().set(&DataKey::Trade(id), &trade);
+        env.storage().persistent().extend_ttl(&DataKey::Trade(id), 17_280, 17_280 * 30);
 
-        env.events()
-            .publish((topic_created(), asset_type), (id, seller, amount));
+        env.events().publish((topic_created(), asset_type), (id, seller, amount));
 
         id
     }
 
     // -----------------------------------------------------------------------
-    // deposit_to_escrow — called by the Buyer
+    // deposit_to_escrow
     // -----------------------------------------------------------------------
 
     /// Locks the buyer's funds into the contract for a specific trade.
@@ -229,7 +222,7 @@ impl EscrowContract {
             .get(&DataKey::Trade(trade_id))
             .expect("trade not found");
 
-        if trade.status != TradeStatus::Open {
+        if trade.status != TradeStatus::Open && trade.status != TradeStatus::PartiallyFilled {
             panic!("trade is not open");
         }
 
@@ -242,23 +235,43 @@ impl EscrowContract {
             panic!("seller cannot buy own trade");
         }
 
-        // Pull funds from buyer into the contract
+        if fill_amount <= 0 {
+            panic!("fill amount must be positive");
+        }
+
+        if fill_amount > trade.total_amount - trade.filled_amount {
+            panic!("fill amount exceeds available amount");
+        }
+
         let token_client = token::Client::new(&env, &trade.token);
-        token_client.transfer(&buyer, &env.current_contract_address(), &trade.amount);
+        token_client.transfer(&buyer, &env.current_contract_address(), &fill_amount);
 
-        trade.buyer = Some(buyer.clone());
-        trade.status = TradeStatus::Locked;
+        trade.filled_amount += fill_amount;
+        if trade.filled_amount == trade.total_amount {
+            trade.status = TradeStatus::Locked;
+        } else {
+            trade.status = TradeStatus::PartiallyFilled;
+        }
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::Trade(trade_id), &trade);
+        env.storage().persistent().set(&DataKey::Trade(trade_id), &trade);
 
-        env.events()
-            .publish((topic_locked(),), (trade_id, buyer));
+        let fill_id = env.storage().instance().get(&DataKey::TradeFillCounter(trade_id)).unwrap_or(0u64) + 1;
+        env.storage().instance().set(&DataKey::TradeFillCounter(trade_id), &fill_id);
+
+        let sub_escrow = SubEscrow {
+            fill_id,
+            buyer: buyer.clone(),
+            amount: fill_amount,
+            released: false,
+            refunded: false,
+        };
+        env.storage().persistent().set(&DataKey::SubEscrow(trade_id, fill_id), &sub_escrow);
+
+        env.events().publish((topic_locked(),), (trade_id, buyer));
     }
 
     // -----------------------------------------------------------------------
-    // release_payment — called by the Backend / Oracle after delivery
+    // release_payment
     // -----------------------------------------------------------------------
 
     /// Releases escrowed funds to the seller once delivery is confirmed.
@@ -270,138 +283,152 @@ impl EscrowContract {
         let admin = get_admin(&env);
         admin.require_auth();
 
-        let mut trade: TradeOffer = env
+        let mut trade: TradeOffer = env.storage().persistent().get(&DataKey::Trade(trade_id)).expect("trade not found");
+        
+        let mut sub_escrow: SubEscrow = env
             .storage()
             .persistent()
-            .get(&DataKey::Trade(trade_id))
-            .expect("trade not found");
+            .get(&DataKey::SubEscrow(trade_id, fill_id))
+            .expect("fill not found");
 
-        if trade.status != TradeStatus::Locked {
-            panic!("trade is not in Locked state");
+        if sub_escrow.released || sub_escrow.refunded {
+            panic!("fill already processed");
         }
 
-        // Push funds from contract to seller
         let token_client = token::Client::new(&env, &trade.token);
         token_client.transfer(
             &env.current_contract_address(),
             &trade.seller,
-            &trade.amount,
+            &sub_escrow.amount,
         );
 
-        trade.status = TradeStatus::Completed;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Trade(trade_id), &trade);
+        sub_escrow.released = true;
+        env.storage().persistent().set(&DataKey::SubEscrow(trade_id, fill_id), &sub_escrow);
 
-        env.events()
-            .publish((topic_completed(),), (trade_id, trade.seller));
+        if trade.filled_amount == trade.total_amount {
+            let fill_count = env.storage().instance().get(&DataKey::TradeFillCounter(trade_id)).unwrap_or(0);
+            let mut all_released = true;
+            for i in 1..=fill_count {
+                if let Some(sub) = env.storage().persistent().get::<_, SubEscrow>(&DataKey::SubEscrow(trade_id, i)) {
+                    if !sub.released && !sub.refunded {
+                        all_released = false;
+                        break;
+                    }
+                }
+            }
+            if all_released {
+                trade.status = TradeStatus::Completed;
+                env.storage().persistent().set(&DataKey::Trade(trade_id), &trade);
+            }
+        }
+
+        env.events().publish((topic_completed(),), (trade_id, trade.seller.clone()));
     }
 
     // -----------------------------------------------------------------------
-    // cancel_and_refund — called by Buyer (after timeout) or Admin
+    // cancel_and_refund
     // -----------------------------------------------------------------------
 
-    /// Returns escrowed funds to the buyer and marks the trade Cancelled.
-    ///
-    /// Can be called by:
-    /// - The buyer, if the trade is Locked and has passed its expiry
-    /// - The admin, at any point (for dispute resolution)
     pub fn cancel_and_refund(env: Env, caller: Address, trade_id: u64) {
         require_not_paused(&env);
         caller.require_auth();
 
         let admin = get_admin(&env);
 
-        let mut trade: TradeOffer = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Trade(trade_id))
-            .expect("trade not found");
+        let mut trade: TradeOffer = env.storage().persistent().get(&DataKey::Trade(trade_id)).expect("trade not found");
 
-        if trade.status != TradeStatus::Locked && trade.status != TradeStatus::Disputed {
+        if trade.status != TradeStatus::Locked && trade.status != TradeStatus::Disputed && trade.status != TradeStatus::PartiallyFilled {
             panic!("trade cannot be refunded in its current state");
         }
 
         let now = env.ledger().timestamp();
-        let is_admin = caller == admin;
-        let is_buyer = trade
-            .buyer
-            .as_ref()
-            .map(|b| *b == caller)
-            .unwrap_or(false);
+        let fill_count = env.storage().instance().get(&DataKey::TradeFillCounter(trade_id)).unwrap_or(0);
+        let mut refunded_amount = 0;
+        let mut caller_has_fills = false;
 
-        if !is_admin && !is_buyer {
+        let token_client = token::Client::new(&env, &trade.token);
+
+        for i in 1..=fill_count {
+            if let Some(mut sub) = env.storage().persistent().get::<_, SubEscrow>(&DataKey::SubEscrow(trade_id, i)) {
+                if !sub.released && !sub.refunded {
+                    let is_buyer = sub.buyer == caller;
+                    if is_admin || is_buyer {
+                        if is_buyer && !is_admin && now < trade.expires_at {
+                            panic!("timelock has not expired yet");
+                        }
+                        caller_has_fills = true;
+                        token_client.transfer(
+                            &env.current_contract_address(),
+                            &sub.buyer,
+                            &sub.amount,
+                        );
+                        sub.refunded = true;
+                        env.storage().persistent().set(&DataKey::SubEscrow(trade_id, i), &sub);
+                        refunded_amount += sub.amount;
+                    }
+                }
+            }
+        }
+
+        if !is_admin && !caller_has_fills {
             panic!("only admin or buyer can cancel");
         }
 
-        // Buyer self-refund only allowed after the trade expiry (24 h timelock)
-        if is_buyer && !is_admin && now < trade.expires_at {
-            panic!("timelock has not expired yet");
+        trade.filled_amount -= refunded_amount;
+
+        if is_admin {
+            trade.status = TradeStatus::Cancelled;
+        } else if trade.filled_amount == 0 {
+            trade.status = TradeStatus::Open;
+        } else if trade.filled_amount < trade.total_amount {
+            trade.status = TradeStatus::PartiallyFilled;
         }
 
-        let buyer = trade.buyer.clone().expect("no buyer recorded");
-
-        // Return funds to the buyer
-        let token_client = token::Client::new(&env, &trade.token);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &buyer,
-            &trade.amount,
-        );
-
-        trade.status = TradeStatus::Cancelled;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Trade(trade_id), &trade);
-
-        env.events()
-            .publish((topic_cancelled(),), (trade_id, buyer));
+        env.storage().persistent().set(&DataKey::Trade(trade_id), &trade);
+        env.events().publish((topic_cancelled(),), (trade_id, caller));
     }
 
     // -----------------------------------------------------------------------
-    // flag_dispute — called by Buyer or Seller
+    // flag_dispute
     // -----------------------------------------------------------------------
 
-    /// Flags a Locked trade as Disputed so the admin can intervene.
     pub fn flag_dispute(env: Env, caller: Address, trade_id: u64) {
         require_not_paused(&env);
         caller.require_auth();
 
-        let mut trade: TradeOffer = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Trade(trade_id))
-            .expect("trade not found");
+        let mut trade: TradeOffer = env.storage().persistent().get(&DataKey::Trade(trade_id)).expect("trade not found");
 
-        if trade.status != TradeStatus::Locked {
-            panic!("only a Locked trade can be disputed");
+        if trade.status != TradeStatus::Locked && trade.status != TradeStatus::PartiallyFilled {
+            panic!("only a Locked or PartiallyFilled trade can be disputed");
         }
 
-        let is_party = caller == trade.seller
-            || trade
-                .buyer
-                .as_ref()
-                .map(|b| *b == caller)
-                .unwrap_or(false);
+        let mut is_party = caller == trade.seller;
+        
+        if !is_party {
+            let fill_count = env.storage().instance().get(&DataKey::TradeFillCounter(trade_id)).unwrap_or(0);
+            for i in 1..=fill_count {
+                if let Some(sub) = env.storage().persistent().get::<_, SubEscrow>(&DataKey::SubEscrow(trade_id, i)) {
+                    if sub.buyer == caller {
+                        is_party = true;
+                        break;
+                    }
+                }
+            }
+        }
 
         if !is_party {
             panic!("only trade parties can flag a dispute");
         }
 
         trade.status = TradeStatus::Disputed;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Trade(trade_id), &trade);
-
-        env.events()
-            .publish((topic_disputed(),), (trade_id, caller));
+        env.storage().persistent().set(&DataKey::Trade(trade_id), &trade);
+        env.events().publish((topic_disputed(),), (trade_id, caller));
     }
 
     // -----------------------------------------------------------------------
     // View helpers  (NOT blocked by paused flag)
     // -----------------------------------------------------------------------
 
-    /// Returns a trade offer by ID.
     pub fn get_trade(env: Env, trade_id: u64) -> TradeOffer {
         env.storage()
             .persistent()
@@ -409,7 +436,6 @@ impl EscrowContract {
             .expect("trade not found")
     }
 
-    /// Returns the current trade counter (total trades ever created).
     pub fn trade_count(env: Env) -> u64 {
         env.storage()
             .instance()
@@ -417,7 +443,6 @@ impl EscrowContract {
             .unwrap_or(0u64)
     }
 
-    /// Returns the admin address.
     pub fn get_admin(env: Env) -> Address {
         env.storage()
             .instance()
@@ -458,13 +483,11 @@ mod test {
         let seller = Address::generate(&env);
         let buyer = Address::generate(&env);
 
-        // Deploy a mock token
         let token_admin = Address::generate(&env);
         let token_id = env.register_stellar_asset_contract_v2(token_admin.clone());
         let token_address = token_id.address();
         let sac = StellarAssetClient::new(&env, &token_address);
 
-        // Mint tokens to buyer
         sac.mint(&buyer, &10_000_0000000i128);
 
         client.initialize(&admin);
@@ -487,7 +510,7 @@ mod test {
             &token,
             &500_0000000i128,
             &symbol_short!("AIRTIME"),
-            &(1_000_000 + 86_400), // +24h
+            &(1_000_000 + 86_400),
         );
 
         assert_eq!(trade_id, 1);
@@ -497,7 +520,7 @@ mod test {
     }
 
     #[test]
-    fn test_deposit_to_escrow() {
+    fn test_deposit_to_escrow_full_fill() {
         let (env, client, _admin, seller, buyer, token) = setup();
         env.ledger().with_mut(|l| l.timestamp = 1_000_000);
 
@@ -509,16 +532,79 @@ mod test {
             &(1_000_000 + 86_400),
         );
 
-        client.deposit_to_escrow(&buyer, &trade_id);
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
 
         let trade = client.get_trade(&trade_id);
         assert_eq!(trade.status, TradeStatus::Locked);
-        assert_eq!(trade.buyer, Some(buyer));
+        assert_eq!(trade.filled_amount, 500_0000000i128);
+    }
+
+    #[test]
+    fn test_deposit_to_escrow_partial_fill() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+
+        client.deposit_to_escrow(&buyer, &trade_id, &200_0000000i128);
+
+        let trade = client.get_trade(&trade_id);
+        assert_eq!(trade.status, TradeStatus::PartiallyFilled);
+        assert_eq!(trade.filled_amount, 200_0000000i128);
+    }
+
+    #[test]
+    fn test_deposit_to_escrow_multiple_fills() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+
+        client.deposit_to_escrow(&buyer, &trade_id, &200_0000000i128);
+        
+        let buyer2 = Address::generate(&env);
+        let sac = StellarAssetClient::new(&env, &token);
+        sac.mint(&buyer2, &500_0000000i128);
+
+        client.deposit_to_escrow(&buyer2, &trade_id, &300_0000000i128);
+
+        let trade = client.get_trade(&trade_id);
+        assert_eq!(trade.status, TradeStatus::Locked);
+        assert_eq!(trade.filled_amount, 500_0000000i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "fill amount exceeds available amount")]
+    fn test_over_fill_rejection() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+
+        client.deposit_to_escrow(&buyer, &trade_id, &600_0000000i128);
     }
 
     #[test]
     fn test_release_payment() {
-        let (env, client, admin, seller, buyer, token) = setup();
+        let (env, client, _admin, seller, buyer, token) = setup();
         env.ledger().with_mut(|l| l.timestamp = 1_000_000);
 
         let trade_id = client.create_listing(
@@ -528,13 +614,12 @@ mod test {
             &symbol_short!("DATA"),
             &(1_000_000 + 86_400),
         );
-        client.deposit_to_escrow(&buyer, &trade_id);
-        client.release_payment(&trade_id);
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
+        client.release_payment(&trade_id, &1);
 
         let trade = client.get_trade(&trade_id);
         assert_eq!(trade.status, TradeStatus::Completed);
 
-        // Verify seller received funds
         let token_client = TokenClient::new(&env, &token);
         assert_eq!(token_client.balance(&seller), 500_0000000i128);
     }
@@ -551,17 +636,16 @@ mod test {
             &symbol_short!("AIRTIME"),
             &(1_000_000 + 86_400),
         );
-        client.deposit_to_escrow(&buyer, &trade_id);
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
 
-        // Advance time past expiry
         env.ledger().with_mut(|l| l.timestamp = 1_000_000 + 86_401);
 
         client.cancel_and_refund(&buyer, &trade_id);
 
         let trade = client.get_trade(&trade_id);
-        assert_eq!(trade.status, TradeStatus::Cancelled);
+        assert_eq!(trade.status, TradeStatus::Open);
+        assert_eq!(trade.filled_amount, 0);
 
-        // Verify buyer was refunded
         let token_client = TokenClient::new(&env, &token);
         assert_eq!(token_client.balance(&buyer), 10_000_0000000i128);
     }
@@ -579,9 +663,8 @@ mod test {
             &symbol_short!("AIRTIME"),
             &(1_000_000 + 86_400),
         );
-        client.deposit_to_escrow(&buyer, &trade_id);
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
 
-        // Try to cancel before expiry — must panic
         client.cancel_and_refund(&buyer, &trade_id);
     }
 
