@@ -27,8 +27,7 @@ const REQUIRED_ENV_VARS = [
 const missingVars = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
 
 if (missingVars.length > 0) {
-  // Use console.error here — logger may not be fully initialised yet
-  console.error(
+  logger.error(
     `[startup] Missing required environment variables: ${missingVars.join(", ")}\n` +
       `Copy server/.env.example to server/.env and fill in the values.`
   );
@@ -38,7 +37,7 @@ if (missingVars.length > 0) {
 // Validate ENCRYPTION_KEY format: must be exactly 64 hex characters
 const encryptionKey = process.env["ENCRYPTION_KEY"];
 if (encryptionKey && !/^[0-9a-fA-F]{64}$/.test(encryptionKey)) {
-  console.error(
+  logger.error(
     "[startup] ENCRYPTION_KEY must be a 64-character hex string"
   );
   process.exit(1);
@@ -54,7 +53,7 @@ pool.query(testQueryText)
     logger.info({ query: testQueryText }, "Database connection validated");
   })
   .catch((err) => {
-    console.error(
+    logger.error(
       `[startup] Database connection failed: ${err.message}\n` +
         "Verify DATABASE_URL is correct and PostgreSQL is reachable.\n" +
         "Server exiting."
