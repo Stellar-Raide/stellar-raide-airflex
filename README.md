@@ -259,8 +259,18 @@ The table below links to the equivalent hand-written Markdown in this repo.
 
 ## Security
 
-Please report vulnerabilities privately. Never disclose security issues publicly
-before a fix is available.
+AirFlex handles real user funds — security is a first-class concern.
+
+Please report vulnerabilities **privately** via email at **security@stellar-raide-stellar-raide-airflex.io**
+or through [GitHub's private vulnerability reporting](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/security/advisories/new).
+Never disclose security issues publicly before a fix is available.
+
+We acknowledge reports within **48 hours**, complete triage within **7 days**,
+and communicate a fix timeline within **14 days**. Researchers who report
+valid issues in good faith are credited in the published advisory and will not
+face legal action.
+
+Full policy, scope, and coordinated disclosure terms → [SECURITY.md](./SECURITY.md)
 
 ---
 
