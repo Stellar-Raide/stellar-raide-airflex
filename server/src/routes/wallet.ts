@@ -2,6 +2,7 @@ import { Router } from "express";
 import pool from "../db";
 import { authenticate, AuthenticatedRequest } from "../middleware/authenticate";
 import { getWalletBalance } from "../services/stellar";
+import { NotificationService } from "../services/notifications";
 
 const router = Router();
 
@@ -104,7 +105,7 @@ router.get(
       asset: "XLM",
       network: process.env["STELLAR_NETWORK"] ?? "testnet",
     });
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -125,7 +126,7 @@ router.get(
       console.error("[wallet] Failed to fetch banks:", (err as Error).message);
       res.status(502).json({ error: "Unable to fetch bank list. Try again." });
     }
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -159,7 +160,7 @@ router.get(
       console.error("[wallet] Failed to resolve account:", (err as Error).message);
       res.status(502).json({ error: "Unable to resolve account. Check the account number and bank." });
     }
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -233,8 +234,13 @@ router.post(
     // 3. Update the wallet balance after successful transfer
     // 4. Handle transfer failures and retries
 
+    // Notify the user that their withdrawal was processed (best-effort)
+    void NotificationService.send(userId, "WITHDRAWAL_PROCESSED", {
+      amount: amountNum,
+    });
+
     res.status(200).json({ success: true });
-  })
+  }
 );
 
 export default router;

@@ -8,6 +8,7 @@ import {
   triggerVerification,
   VerificationError,
 } from "../services/tradeVerification";
+import { NotificationService } from "../services/notifications";
 import type { TradeOffer } from "../types/trade";
 import {
   createTradeSchema,
@@ -62,7 +63,7 @@ router.get(
         totalPages: Math.ceil(total / limit),
       },
     });
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -114,7 +115,7 @@ router.post(
     );
 
     res.status(201).json({ data: rows[0] });
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -138,7 +139,7 @@ router.get(
     }
 
     res.status(200).json({ data: rows[0] });
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -201,8 +202,13 @@ router.post(
       [buyerId, txHash, id]
     );
 
+    // Notify the seller that their trade has been locked (best-effort)
+    void NotificationService.send(trade.seller_id, "TRADE_LOCKED", {
+      tradeId: id,
+    });
+
     res.status(200).json({ data: updated[0] });
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -249,7 +255,7 @@ router.post(
         "you will be notified via the event stream when complete.",
       tradeId: id,
     });
-  })
+  }
 );
 
 export default router;
