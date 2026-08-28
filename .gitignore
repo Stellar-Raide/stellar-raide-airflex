@@ -149,3 +149,6 @@ vite.config.ts.timestamp-*
 # Pull request description docs (local only, not for version control)
 pr-*.md
 PULL_REQUEST.md
+
+# Storybook build output
+storybook-static/

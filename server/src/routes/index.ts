@@ -20,7 +20,8 @@ export function registerRoutes(app: Express): void {
   app.use('/api/v1/events', eventsRouter);
   app.use('/api/v1/referrals', referralsRouter);
 
-  // Legacy SSE path — kept for backwards compatibility; prefer /api/v1/events
+  // Legacy alias paths
+  app.use('/api/trades', tradesRouter);
   app.use('/api/events', eventsRouter);
 
   // OpenAPI 3.1 spec + Swagger UI
