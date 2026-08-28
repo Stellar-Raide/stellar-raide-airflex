@@ -103,8 +103,19 @@ app.use(
   )
 );
 
-// JSON body parsing
-app.use(express.json());
+// JSON body parsing.
+//
+// `verify` stashes the exact bytes received. The Paystack webhook signs the
+// raw body, and re-serialising the parsed object reorders keys and changes
+// whitespace, producing a different HMAC for a genuine request - so the
+// signature check needs the original bytes, not req.body. See routes/webhooks.
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  })
+);
 
 // Inject X-Api-Version header on every response
 app.use(apiVersion);

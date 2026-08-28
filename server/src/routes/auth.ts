@@ -1,4 +1,6 @@
 import { Router } from "express";
+
+import { rateLimitOtp } from "../middleware/rateLimitOtp";
 import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import pool from "../db";
@@ -93,7 +95,10 @@ async function verifyOtpWithTermii(
 
 router.post(
   "/request-otp",
+  // Validation first so a malformed phone is rejected before it is charged
+  // against that number's quota (Issue #7).
   validate(requestOtpSchema),
+  rateLimitOtp,
   async (req, res) => {
     const { phone } = req.body as RequestOtpInput;
 
@@ -146,18 +151,18 @@ router.post(
 
     if (!user) {
       // Return generic error — don't leak whether the phone exists
-      res.status(400).json({ error: "Invalid phone number or OTP" });
+      res.status(401).json({ error: "Invalid phone number or OTP" });
       return;
     }
 
     if (!user.otp_pin_id || !user.otp_expires_at) {
-      res.status(400).json({ error: "No pending OTP for this number. Request a new one." });
+      res.status(401).json({ error: "No pending OTP for this number. Request a new one." });
       return;
     }
 
     // Guard: OTP expired
     if (new Date(user.otp_expires_at) < new Date()) {
-      res.status(400).json({ error: "OTP has expired. Request a new one." });
+      res.status(401).json({ error: "OTP has expired. Request a new one." });
       return;
     }
 
@@ -172,7 +177,7 @@ router.post(
     }
 
     if (!verified) {
-      res.status(400).json({ error: "Invalid or expired OTP" });
+      res.status(401).json({ error: "Invalid or expired OTP" });
       return;
     }
 
