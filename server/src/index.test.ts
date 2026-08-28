@@ -43,3 +43,11 @@ describe("GET /health", () => {
     expect(res.headers["x-api-version"]).toBe("1");
   });
 });
+
+describe("body size limit", () => {
+  it("returns 413 when JSON body exceeds 10kb", async () => {
+    const largeBody = { data: "x".repeat(10241) };
+    const res = await request(app).post("/api/v1/auth/request-otp").send(largeBody);
+    expect(res.status).toBe(413);
+  });
+});

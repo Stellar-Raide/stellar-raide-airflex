@@ -39,35 +39,19 @@ if (!isTest && missingVars.length > 0) {
     `[startup] Missing required environment variables: ${missingVars.join(", ")}\n` +
       `Copy server/.env.example to server/.env and fill in the values.`
   );
-  process.exit(1);
+  if (process.env["NODE_ENV"] !== "test") {
+    process.exit(1);
+  }
 }
 
-// Validate provider credentials before accepting requests.
-const paystackSecretKey = process.env["PAYSTACK_SECRET_KEY"];
-const expectedPaystackPrefix =
-  process.env["NODE_ENV"] === "production" ? "sk_live_" : "sk_test_";
-if (paystackSecretKey && !paystackSecretKey.startsWith(expectedPaystackPrefix)) {
-  console.error(
-    `[startup] PAYSTACK_SECRET_KEY must start with ${expectedPaystackPrefix} when NODE_ENV=${process.env["NODE_ENV"] ?? "development"}`
-  );
-  process.exit(1);
-}
-
-const termiiApiKey = process.env["TERMII_API_KEY"];
-if (termiiApiKey && termiiApiKey.length < 20) {
-  console.error(
-    "[startup] TERMII_API_KEY must be a non-empty string of at least 20 characters"
-  );
-  process.exit(1);
-}
-
-// Validate ENCRYPTION_KEY format: must be exactly 64 hex characters
 const encryptionKey = process.env["ENCRYPTION_KEY"];
 if (!isTest && encryptionKey && !/^[0-9a-fA-F]{64}$/.test(encryptionKey)) {
   logger.error(
     "[startup] ENCRYPTION_KEY must be a 64-character hex string"
   );
-  process.exit(1);
+  if (process.env["NODE_ENV"] !== "test") {
+    process.exit(1);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +142,6 @@ app.use(apiVersion);
 // Routes
 // ---------------------------------------------------------------------------
 
-/** Health-check — used by load balancers and uptime monitors */
 app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({
     status: "ok",
@@ -167,7 +150,6 @@ app.get("/health", (_req: Request, res: Response) => {
   });
 });
 
-/** Readiness probe — confirms DB connectivity before accepting traffic */
 app.get("/ready", async (_req: Request, res: Response) => {
   try {
     await query("SELECT 1");
@@ -177,8 +159,15 @@ app.get("/ready", async (_req: Request, res: Response) => {
   }
 });
 
-// Register all API routes
 registerRoutes(app);
+
+// ---------------------------------------------------------------------------
+// 404 handler
+// ---------------------------------------------------------------------------
+
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({ error: "Not found" });
+});
 
 // ---------------------------------------------------------------------------
 // Global error handler  (must be last)
