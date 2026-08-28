@@ -317,6 +317,7 @@ without redeployment.
   stellar contract build
   ```
 - Update `docs/smart-contract.md` with any new or changed functions.
+- Keep `contracts/readme.md` **Storage Schema** section in sync with `DataKey` changes in `escrow/src/lib.rs` (tiers, TTL, and off-chain query examples).
 - If redeployment is required, add the new contract address to `server/.env.example`
   and document it in the PR description.
 
