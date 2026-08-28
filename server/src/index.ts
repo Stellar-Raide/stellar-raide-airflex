@@ -129,6 +129,10 @@ app.use(
 // signature check needs the original bytes, not req.body. See routes/webhooks.
 app.use(
   express.json({
+    // Cap JSON payloads at 10kb (asserted by index.test.ts). Webhooks and API
+    // bodies are all small; file uploads (KYC documents) go through busboy as
+    // multipart and are not affected.
+    limit: "10kb",
     verify: (req, _res, buf) => {
       (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
     },
