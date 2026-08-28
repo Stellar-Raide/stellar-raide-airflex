@@ -201,10 +201,17 @@ Called by the seller to register a new trade offer on-chain. Returns the assigne
 
 **Authorisation:** The seller address must sign the transaction — `seller.require_auth()` is enforced as the first statement.
 
+### `deposit_to_escrow(buyer, trade_id, fill_amount)`
+
+Locks the buyer's funds into escrow for a specific trade. Sets trade status to `Locked` when fully filled.
+
+**Authorisation:** Caller must be the buyer — `buyer.require_auth()` is enforced before reading trade state or transferring tokens.
+
 ---
 
 ## Security
 
+- **Address authorisation:** Every contract function that accepts an `Address` parameter representing the caller (e.g. `seller`, `buyer`, `admin`) must call `address.require_auth()` before reading state or transferring tokens. This prevents impersonation attacks where a third party acts on behalf of an unwitting user.
 - **Timelocks:** Buyers can self-refund after 24 hours if the trade is not completed.
 - **Admin-only oracle:** Only the initialised admin address can call `release_payment`.
   Who calls it: System Backend (must be the admin/oracle address set at initialization).

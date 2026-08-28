@@ -241,8 +241,8 @@ impl EscrowContract {
     /// Transfers `trade.amount` tokens from `buyer` → contract.
     /// Sets trade status to `Locked`.
     pub fn deposit_to_escrow(env: Env, buyer: Address, trade_id: u64, fill_amount: i128) {
-        require_not_paused(&env);
         buyer.require_auth();
+        require_not_paused(&env);
 
         let mut trade: TradeOffer = env
             .storage()
@@ -639,6 +639,61 @@ mod test {
             &symbol_short!("AIRTIME"),
             &(1_000_000 + 86_400),
         );
+
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
+
+        let trade = client.get_trade(&trade_id);
+        assert_eq!(trade.status, TradeStatus::Locked);
+        assert_eq!(trade.filled_amount, 500_0000000i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+    fn test_deposit_to_escrow_unauthorised_buyer_rejected() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+
+        let impersonator = Address::generate(&env);
+
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &impersonator,
+            invoke: &client.mock_invoke(
+                &client.deposit_to_escrow,
+                (&buyer, &trade_id, &500_0000000i128),
+            ),
+        }]);
+
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
+    }
+
+    #[test]
+    fn test_deposit_to_escrow_authorised_buyer_succeeds() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &buyer,
+            invoke: &client.mock_invoke(
+                &client.deposit_to_escrow,
+                (&buyer, &trade_id, &500_0000000i128),
+            ),
+        }]);
 
         client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
 
