@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
+import { randomInt } from "crypto";
 import jwt from "jsonwebtoken";
 import pool from "../db";
 import { generateAndFundWallet } from "../services/stellar";
@@ -10,8 +11,13 @@ import {
   type RequestOtpInput,
   type VerifyOtpInput,
 } from "../schemas";
+import { createReferralCode } from "../services/referrals";
 
 const router = Router();
+
+function newReferralCode(): string {
+  return createReferralCode(() => randomInt(0, 32) / 32);
+}
 
 /** Send OTP via Termii SMS API */
 async function sendOtp(phone: string, otp: string): Promise<void> {
@@ -95,15 +101,25 @@ router.post(
   "/request-otp",
   validate(requestOtpSchema),
   async (req, res) => {
-    const { phone } = req.body as RequestOtpInput;
+    const { phone, referralCode } = req.body as RequestOtpInput;
 
     // Upsert user row — create if first time, leave existing data untouched
     await pool.query(
-      `INSERT INTO users (id, phone)
-       VALUES ($1, $2)
+      `INSERT INTO users (id, phone, referral_code)
+       VALUES ($1, $2, $3)
        ON CONFLICT (phone) DO NOTHING`,
-      [uuidv4(), phone]
+      [uuidv4(), phone, newReferralCode()]
     );
+
+    if (referralCode) {
+      await pool.query(
+        `INSERT INTO referrals (referrer_id, referred_id)
+         SELECT referrer.id, referred.id FROM users referrer, users referred
+          WHERE referrer.referral_code = $1 AND referred.phone = $2
+            AND referrer.id <> referred.id ON CONFLICT (referred_id) DO NOTHING`,
+        [referralCode, phone]
+      );
+    }
 
     try {
       await sendOtp(phone, "");

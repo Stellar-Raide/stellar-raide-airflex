@@ -35,6 +35,7 @@ import pool from "../db";
 import { releasePayment } from "./stellar";
 import { SseEmitter } from "./sseEmitter";
 import { WalletService } from "./wallet";
+import { creditReferralReward } from "./referrals";
 import type { TradeOffer } from "../types/trade";
 
 // ---------------------------------------------------------------------------
@@ -185,6 +186,8 @@ async function runVerificationWithRetry(
         [tradeId, feeAmount, sellerNetAmount]
       );
       updated = result.rows;
+      await creditReferralReward(client, settledTrade.buyer_id, tradeId);
+      await creditReferralReward(client, settledTrade.seller_id, tradeId);
       await client.query("COMMIT");
     } catch (settlementError) {
       await client.query("ROLLBACK");
