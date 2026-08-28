@@ -69,7 +69,7 @@ router.get(
   async (_req, res) => {
     const queues = QueueService.getStats();
     res.status(200).json({ queues });
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
