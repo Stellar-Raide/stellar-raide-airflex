@@ -8,6 +8,7 @@ import adminRouter from './admin';
 import eventsRouter from './events';
 import docsRouter from './docs';
 import referralsRouter from './referrals';
+import kycRouter from './kyc';
 
 export function registerRoutes(app: Express): void {
   // API v1 routes
@@ -19,6 +20,9 @@ export function registerRoutes(app: Express): void {
   app.use('/api/v1/admin', adminRouter);
   app.use('/api/v1/events', eventsRouter);
   app.use('/api/v1/referrals', referralsRouter);
+
+  // KYC submission (issue #114)
+  app.use('/api/kyc', kycRouter);
 
   // Legacy alias paths
   app.use('/api/trades', tradesRouter);
