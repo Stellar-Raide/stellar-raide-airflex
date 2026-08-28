@@ -7,6 +7,7 @@ import webhooksRouter from './webhooks';
 import adminRouter from './admin';
 import eventsRouter from './events';
 import docsRouter from './docs';
+import referralsRouter from './referrals';
 
 export function registerRoutes(app: Express): void {
   // API v1 routes
@@ -17,6 +18,7 @@ export function registerRoutes(app: Express): void {
   app.use('/api/v1/webhooks', webhooksRouter);
   app.use('/api/v1/admin', adminRouter);
   app.use('/api/v1/events', eventsRouter);
+  app.use('/api/v1/referrals', referralsRouter);
 
   // Legacy SSE path — kept for backwards compatibility; prefer /api/v1/events
   app.use('/api/events', eventsRouter);
