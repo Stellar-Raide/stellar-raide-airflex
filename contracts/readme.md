@@ -141,5 +141,6 @@ MARKETPLACE_CONTRACT_ID=C...
 
 - **Timelocks:** Buyers can self-refund after 24 hours if the trade is not completed.
 - **Admin-only oracle:** Only the initialised admin address can call `release_payment`.
+  Who calls it: System Backend (must be the admin/oracle address set at initialization).
 - **Pause circuit-breaker:** Admin can pause all state-mutating operations in an emergency.
 - **Reentrancy:** Soroban's host environment prevents re-entrant calls natively.
