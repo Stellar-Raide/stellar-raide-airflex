@@ -22,6 +22,8 @@ const REQUIRED_ENV_VARS = [
   "ENCRYPTION_KEY",
   "STELLAR_SERVER_SECRET",
   "PLATFORM_TREASURY_USER_ID",
+  "PAYSTACK_SECRET_KEY",
+  "TERMII_API_KEY",
 ] as const;
 
 const missingVars = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
@@ -31,6 +33,25 @@ if (missingVars.length > 0) {
   console.error(
     `[startup] Missing required environment variables: ${missingVars.join(", ")}\n` +
       `Copy server/.env.example to server/.env and fill in the values.`
+  );
+  process.exit(1);
+}
+
+// Validate provider credentials before accepting requests.
+const paystackSecretKey = process.env["PAYSTACK_SECRET_KEY"];
+const expectedPaystackPrefix =
+  process.env["NODE_ENV"] === "production" ? "sk_live_" : "sk_test_";
+if (paystackSecretKey && !paystackSecretKey.startsWith(expectedPaystackPrefix)) {
+  console.error(
+    `[startup] PAYSTACK_SECRET_KEY must start with ${expectedPaystackPrefix} when NODE_ENV=${process.env["NODE_ENV"] ?? "development"}`
+  );
+  process.exit(1);
+}
+
+const termiiApiKey = process.env["TERMII_API_KEY"];
+if (termiiApiKey && termiiApiKey.length < 20) {
+  console.error(
+    "[startup] TERMII_API_KEY must be a non-empty string of at least 20 characters"
   );
   process.exit(1);
 }
