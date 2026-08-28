@@ -1,7 +1,8 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short,
+    contract, contractimpl, contracttype, symbol_short,
     token, Address, Env, Symbol, Vec,
 };
 
@@ -173,8 +174,8 @@ impl EscrowContract {
         asset_type: Symbol,
         expires_at: u64,
     ) -> u64 {
-        require_not_paused(&env);
         seller.require_auth();
+        require_not_paused(&env);
 
         if !env.storage().instance().has(&DataKey::AllowedToken(token.clone())) {
             panic!("unsupported token");
@@ -241,8 +242,8 @@ impl EscrowContract {
     /// Transfers `trade.amount` tokens from `buyer` → contract.
     /// Sets trade status to `Locked`.
     pub fn deposit_to_escrow(env: Env, buyer: Address, trade_id: u64, fill_amount: i128) {
-        require_not_paused(&env);
         buyer.require_auth();
+        require_not_paused(&env);
 
         let mut trade: TradeOffer = env
             .storage()
@@ -561,6 +562,73 @@ mod test {
     }
 
     #[test]
+    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+    fn test_create_listing_unauthorised_seller_rejected() {
+        let (env, client, _admin, seller, _buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let impersonator = Address::generate(&env);
+        let expires_at = 1_000_000u64 + 86_400;
+
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &impersonator,
+            invoke: &client.mock_invoke(
+                &client.create_listing,
+                (
+                    &seller,
+                    &token,
+                    &500_0000000i128,
+                    &symbol_short!("AIRTIME"),
+                    &expires_at,
+                ),
+            ),
+        }]);
+
+        client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &expires_at,
+        );
+    }
+
+    #[test]
+    fn test_create_listing_authorised_seller_succeeds() {
+        let (env, client, _admin, seller, _buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let expires_at = 1_000_000u64 + 86_400;
+
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &seller,
+            invoke: &client.mock_invoke(
+                &client.create_listing,
+                (
+                    &seller,
+                    &token,
+                    &500_0000000i128,
+                    &symbol_short!("AIRTIME"),
+                    &expires_at,
+                ),
+            ),
+        }]);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &expires_at,
+        );
+
+        assert_eq!(trade_id, 1);
+        let trade = client.get_trade(&trade_id);
+        assert_eq!(trade.status, TradeStatus::Open);
+        assert_eq!(trade.seller, seller);
+    }
+
+    #[test]
     fn test_deposit_to_escrow_full_fill() {
         let (env, client, _admin, seller, buyer, token) = setup();
         env.ledger().with_mut(|l| l.timestamp = 1_000_000);
@@ -572,6 +640,61 @@ mod test {
             &symbol_short!("AIRTIME"),
             &(1_000_000 + 86_400),
         );
+
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
+
+        let trade = client.get_trade(&trade_id);
+        assert_eq!(trade.status, TradeStatus::Locked);
+        assert_eq!(trade.filled_amount, 500_0000000i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+    fn test_deposit_to_escrow_unauthorised_buyer_rejected() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+
+        let impersonator = Address::generate(&env);
+
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &impersonator,
+            invoke: &client.mock_invoke(
+                &client.deposit_to_escrow,
+                (&buyer, &trade_id, &500_0000000i128),
+            ),
+        }]);
+
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
+    }
+
+    #[test]
+    fn test_deposit_to_escrow_authorised_buyer_succeeds() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &buyer,
+            invoke: &client.mock_invoke(
+                &client.deposit_to_escrow,
+                (&buyer, &trade_id, &500_0000000i128),
+            ),
+        }]);
 
         client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
 
@@ -762,7 +885,7 @@ mod test {
 
         client.pause();
 
-        client.deposit_to_escrow(&buyer, &trade_id);
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
     }
 
     #[test]
@@ -935,6 +1058,7 @@ mod test {
         }]);
 
         client.release_payment(&trade_id, &1);
+    }
 
     #[test]
     #[should_panic(expected = "not initialised")]
