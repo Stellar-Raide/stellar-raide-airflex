@@ -32,7 +32,7 @@ export function authenticate(
 
   try {
     const payload = jwt.verify(token, secret) as AuthPayload;
-    (req as AuthenticatedRequest).user = payload;
+    (req as unknown as AuthenticatedRequest).user = payload;
     next();
   } catch {
     res.status(401).json({ error: "Token is invalid or expired" });
