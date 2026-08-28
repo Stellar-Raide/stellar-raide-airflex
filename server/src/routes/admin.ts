@@ -167,7 +167,7 @@ router.post(
   "/trades/:id/resolve",
   authenticate,
   requireAdmin,
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: Request, res: Response) => {
     const tradeId = req.params["id"];
     const resolution = (req.body as { resolution?: string } | undefined)?.resolution;
 
@@ -192,7 +192,7 @@ router.post(
            resolved_at = NOW()
        WHERE id = $1 AND status = 'disputed'
        RETURNING id, status, buyer_id, seller_id`,
-      [tradeId, newStatus, req.user?.userId ?? null]
+      [tradeId, newStatus, (req as any).user?.userId ?? (req as any).user?.sub ?? null]
     );
 
     if (rows.length === 0) {
