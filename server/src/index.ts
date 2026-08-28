@@ -6,13 +6,13 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import { registerRoutes } from "@server/routes";
-import logger from "@server/utils/logger";
-import { errorHandler } from "@server/middleware/errorHandler";
-import { apiVersion } from "@server/middleware/apiVersion";
-import { requestId } from "@server/middleware/requestId";
-import { pool, query } from "@server/db/pool";
-import { initJobQueue } from "@server/jobs";
+import { registerRoutes } from "./routes";
+import { initJobQueue } from "./jobs";
+import logger from "./utils/logger";
+import { errorHandler } from "./middleware/errorHandler";
+import { apiVersion } from "./middleware/apiVersion";
+import { requestId } from "./middleware/requestId";
+import { pool, query } from "./db/pool";
 
 // ---------------------------------------------------------------------------
 // Environment validation
