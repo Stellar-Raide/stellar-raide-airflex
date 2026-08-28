@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { getToken, isAuthenticated } from "../lib/auth";
+import DepositModal from "./DepositModal";
 import WithdrawModal from "./WithdrawModal";
 
 // ---------------------------------------------------------------------------
@@ -35,6 +36,7 @@ export default function WalletPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDepositOpen, setIsDepositOpen] = useState(false);
 
   // Auth guard
   useEffect(() => {
@@ -166,15 +168,32 @@ export default function WalletPage() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsModalOpen(true)}
-            className="inline-flex w-full items-center justify-center rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
-          >
-            Withdraw Funds
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setIsDepositOpen(true)}
+              className="inline-flex w-full items-center justify-center rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
+            >
+              Deposit
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="inline-flex w-full items-center justify-center rounded-xl border border-violet-600 px-5 py-3 text-sm font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:text-violet-300 dark:hover:bg-violet-900/30 dark:focus-visible:ring-offset-gray-800"
+            >
+              Withdraw Funds
+            </button>
+          </div>
         </div>
       )}
+
+      {/* Deposit Modal (Issue #25) — reuses the same balance refresh the
+          withdraw flow uses, so a credited deposit shows up without a reload. */}
+      <DepositModal
+        isOpen={isDepositOpen}
+        onClose={() => setIsDepositOpen(false)}
+        onDepositSuccess={handleWithdrawSuccess}
+      />
 
       {/* Withdraw Modal */}
       <WithdrawModal
