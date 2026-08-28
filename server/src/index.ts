@@ -1,5 +1,7 @@
 import "dotenv/config";
 import "express-async-errors";
+// Load contract IDs early — emits startup warnings if addresses are missing
+import "./config/contracts";
 import express, { Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -18,7 +20,6 @@ import { pool, query } from "./db/pool";
 const REQUIRED_ENV_VARS = [
   "JWT_SECRET",
   "DATABASE_URL",
-  "ESCROW_CONTRACT_ADDRESS",
   "ENCRYPTION_KEY",
   "STELLAR_SERVER_SECRET",
   "PLATFORM_TREASURY_USER_ID",

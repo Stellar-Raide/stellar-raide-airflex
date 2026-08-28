@@ -1,122 +1,145 @@
+# AirFlex Smart Contracts
 
-# 📜 AirFlex Escrow Smart Contract
-
-The AirFlex Escrow contract is a **Soroban (Rust)** smart contract designed to facilitate trustless Peer-to-Peer (P2P) trades. It ensures that funds are securely held until the delivery of airtime or data is verified.
-
----
-
-## 🏗️ Technical Specifications
-- **Network:** Stellar (Soroban)
-- **Language:** Rust
-- **SDK Version:** Soroban SDK v20+
-- **Contract Type:** Escrow / Atomic Swap
+Soroban (Rust) smart contracts for the AirFlex P2P airtime/data marketplace on the Stellar network.
 
 ---
 
-## 🛠️ Data Structures
+## Contracts
 
-### `TradeStatus`
-Represents the current state of a P2P transaction.
-```rust
-pub enum TradeStatus {
-    Open,       // Listed and waiting for a buyer
-    Locked,     // Buyer has deposited funds into escrow
-    Completed,  // Funds released to the seller
-    Disputed,   // Trade flagged for admin intervention
-    Cancelled   // Funds returned to the buyer
-}
+| Contract    | Description                                             |
+|-------------|--------------------------------------------------------|
+| `escrow`    | Trustless escrow for P2P trades (deposit, release, refund) |
+| `marketplace` | On-chain listing registry with seller reputation tracking |
+
+---
+
+## Deployed Addresses
+
+Contract IDs are the canonical source of truth. Always cross-reference with
+`contracts/deployments.json` — the file is updated automatically by `deploy.sh`
+and the CI deploy workflow.
+
+### Escrow Contract
+
+| Network | Contract ID | Explorer |
+|---------|-------------|----------|
+| Testnet | `CCBJ235OCBFZXBFSUUUT4PMG7RRCAXZXMUEB2L7CTTQ5NRSNO4P2SLNP` | [View on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CCBJ235OCBFZXBFSUUUT4PMG7RRCAXZXMUEB2L7CTTQ5NRSNO4P2SLNP) |
+| Mainnet | _not yet deployed_ | — |
+
+**Network passphrase (Testnet):** `Test SDF Network ; September 2015`
+**Network passphrase (Mainnet):** `Public Global Stellar Network ; September 2015`
+
+### Marketplace Contract
+
+| Network | Contract ID | Explorer |
+|---------|-------------|----------|
+| Testnet | _not yet deployed_ | — |
+| Mainnet | _not yet deployed_ | — |
+
+---
+
+## Project Structure
 
 ```
-
-### `TradeOffer`
-
-The core object stored on the ledger for every trade.
-
-```rust
-pub struct TradeOffer {
-    pub id: u64,
-    pub seller: Address,
-    pub buyer: Option<Address>,
-    pub amount: i128,          // Stablecoin amount (USDC/NGNC)
-    pub asset_type: Symbol,    // e.g., "MTN_AIRTIME"
-    pub status: TradeStatus,
-    pub expires_at: u64,       // Unix timestamp
-}
-
+contracts/
+├── Cargo.toml            # Workspace manifest
+├── Cargo.lock
+├── deployments.json      # Canonical contract address registry
+├── deploy.sh             # Build-and-deploy automation script
+├── escrow/
+│   ├── Cargo.toml
+│   └── src/lib.rs        # Escrow contract source
+└── marketplace/
+    ├── Cargo.toml
+    └── src/lib.rs        # Marketplace contract source
 ```
 
 ---
 
-## ⚡ Contract Functions
+## Development
 
-### 1. `Notesing`
+### Prerequisites
 
-**Who calls it:** The Seller
-Initializes a trade entry on the blockchain.
+- Rust stable (with `wasm32v1-none` target)
+- [`stellar-cli`](https://developers.stellar.org/docs/tools/developer-tools/stellar-cli) installed and on `$PATH`
 
-* **Parameters:** `seller: Address`, `amount: i128`, `asset_type: Symbol`
-* **Logic:** Registers the trade ID and sets status to `Open`.
+Install the WASM target:
 
-### 2. `deposit_to_escrow`
-
-**Who calls it:** The Buyer
-Moves funds from the buyer's wallet into the contract's secure storage.
-
-* **Parameters:** `buyer: Address`, `trade_id: u64`
-* **Logic:** Transfers token amount from buyer -> contract. Updates status to `Locked`.
-
-### 3. `release_payment`
-
-**Who calls it:** System Backend (via Oracle/Verification)
-Finalizes the trade once airtime/data receipt is confirmed.
-
-* **Parameters:** `trade_id: u64`
-* **Logic:** Transfers funds from contract -> seller. Updates status to `Completed`.
-
-### 4. `cancel_and_refund`
-
-**Who calls it:** Buyer (after timeout) or Admin
-Handles failed trades or disputes.
-
-* **Parameters:** `trade_id: u64`
-* **Logic:** Returns funds from contract -> buyer. Updates status to `Cancelled`.
-
----
-
-## 🔒 Security & Governance
-
-* **Timelocks:** If a trade is `Locked` for more than 24 hours without completion, the buyer can trigger a self-refund.
-* **Multi-Sig Admin:** Only the AirFlex official multisig wallet can resolve trades marked as `Disputed`.
-* **Reentrancy Guard:** The contract uses Soroban's native host environment to prevent recursive call attacks.
-
----
-
-## 🚀 Deployment Instructions
+```bash
+rustup target add wasm32v1-none
+```
 
 ### Build
 
 ```bash
-stellar contract build
+cd contracts
+cargo build --release --target wasm32v1-none
+```
 
+Or using stellar-cli:
+
+```bash
+stellar contract build
 ```
 
 ### Test
 
 ```bash
-cargo test
-
+cd contracts
+cargo test --all-features
 ```
 
-### Deploy (Testnet)
+### Lint
 
 ```bash
-stellar contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/stellar-raide-stellar-raide-airflex_escrow.wasm \
-  --source-account S... \
-  --network testnet
-
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
 ```
 
+---
+
+## Deployment
+
+### Automated (CI)
+
+The `soroban-deploy.yml` workflow handles testnet deployment automatically on
+successful CI runs against `main`. Mainnet deployment is **manual-dispatch only**
+to prevent accidental production deploys.
+
+### Manual (local)
+
+Use the `deploy.sh` script from the repo root:
+
+```bash
+# Deploy all contracts to testnet
+export SOROBAN_DEPLOYER_SECRET="S..."   # deployer Stellar secret key
+export SOROBAN_ADMIN_ADDRESS="G..."     # admin public key
+
+./contracts/deploy.sh --network testnet --contract all
+
+# Deploy only escrow, skip auto-initialize
+./contracts/deploy.sh --network testnet --contract escrow --initialize no
+
+# Mainnet (requires interactive confirmation prompt)
+./contracts/deploy.sh --network mainnet --contract escrow
 ```
 
+After deployment the script:
+1. Updates `contracts/deployments.json` with the new contract ID.
+2. Commits the change (pass `--commit no` to skip).
+
+Copy the new contract ID into your `server/.env`:
+
 ```
+ESCROW_CONTRACT_ID=C...
+MARKETPLACE_CONTRACT_ID=C...
+```
+
+---
+
+## Security
+
+- **Timelocks:** Buyers can self-refund after 24 hours if the trade is not completed.
+- **Admin-only oracle:** Only the initialised admin address can call `release_payment`.
+- **Pause circuit-breaker:** Admin can pause all state-mutating operations in an emergency.
+- **Reentrancy:** Soroban's host environment prevents re-entrant calls natively.
