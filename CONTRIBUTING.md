@@ -374,18 +374,7 @@ Open a [GitHub Issue](https://github.com/dark-sarge/stellar-raide-stellar-raide-
 
 ---
 
-## Suggesting Features
 
-Open a [GitHub Issue](https://github.com/dark-sarge/stellar-raide-stellar-raide-stellar-raide-airflex/issues/new) with the
-`enhancement` label and include:
-
-1. **Problem statement** — what user need or pain point does this address?
-2. **Proposed solution** — describe the feature at a high level.
-3. **Alternatives considered** — other approaches you thought about and why you ruled
-   them out.
-4. **Scope** — which layer(s) are affected: frontend, server, database, smart contract?
-
----
 
 ## Security Vulnerabilities
 
