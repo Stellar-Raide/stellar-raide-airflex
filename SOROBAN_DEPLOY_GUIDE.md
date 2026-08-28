@@ -401,21 +401,7 @@ stellar contract invoke \
   -- my_function --param1 value1 --param2 value2
 ```
 
-### Passing an Address argument
 
-```bash
--- my_function --user GABC...XYZ
-```
-
-### Passing an integer
-
-```bash
--- my_function --amount 5000000000
-```
-
-> Stellar token amounts use 7 decimal places. `1 XLM = 10_000_000 stroops`.
-
----
 
 ## 12. Deploy to Mainnet
 
