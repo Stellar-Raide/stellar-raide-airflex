@@ -91,10 +91,7 @@ rustup target add wasm32v1-none
 rustup toolchain list
 ```
 
-You want `stable-x86_64-pc-windows-msvc` or a working `gnu` toolchain
-(requires MinGW with `dlltool`). The WASM build itself does not need a linker,
-but `cargo test` (native) does.
-
+Y
 If `cargo test` fails with `dlltool not found`, either:
 - Install the MSVC C++ build tools via Visual Studio Installer, **or**
 - Run tests in CI (Linux) and only do WASM builds locally
