@@ -137,7 +137,7 @@ router.get(
         stellarPublicKey:     user.stellar_public_key ?? "",
       },
     });
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -218,7 +218,7 @@ router.get(
         totalPages: Math.ceil(total / limit),
       },
     });
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -263,7 +263,7 @@ router.get(
       pendingDeletion:     user.pending_deletion ?? false,
       scheduledDeletionAt: user.scheduled_deletion_at ?? null,
     });
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -407,7 +407,7 @@ router.delete(
         "You can cancel this request within the grace period.",
       scheduledDeletionAt: scheduledDeletionAt.toISOString(),
     });
-  })
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -477,7 +477,7 @@ router.post(
     res.status(200).json({
       message: "Account deletion cancelled. Your account is fully restored.",
     });
-  })
+  }
 );
 
 export default router;

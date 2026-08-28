@@ -12,8 +12,9 @@
 process.env["JWT_SECRET"] = "test-secret-at-least-32-chars-long!";
 process.env["DATABASE_URL"] = "postgresql://test:test@localhost/test";
 process.env["ESCROW_CONTRACT_ADDRESS"] = "CCBJ235OCBFZXBFSUUUT4PMG7RRCAXZXMUEB2L7CTTQ5NRSNO4P2SLNP";
-process.env["ENCRYPTION_KEY"] = "test-encryption-key-32chars-long!";
+process.env["ENCRYPTION_KEY"] = "a".repeat(64);
 process.env["STELLAR_SERVER_SECRET"] = "SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+process.env["PLATFORM_TREASURY_USER_ID"] = "test-treasury-user-id";
 
 import request from "supertest";
 import app from "./index";
@@ -39,5 +40,13 @@ describe("GET /health", () => {
   it("includes the X-Api-Version: 1 response header", async () => {
     const res = await request(app).get("/health");
     expect(res.headers["x-api-version"]).toBe("1");
+  });
+});
+
+describe("body size limit", () => {
+  it("returns 413 when JSON body exceeds 10kb", async () => {
+    const largeBody = { data: "x".repeat(10241) };
+    const res = await request(app).post("/api/v1/auth/request-otp").send(largeBody);
+    expect(res.status).toBe(413);
   });
 });
