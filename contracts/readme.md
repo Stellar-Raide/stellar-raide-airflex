@@ -193,6 +193,16 @@ The returned XDR decodes to a `TradeOffer` struct (seller, token, amounts, statu
 
 ---
 
+## Escrow Contract Functions
+
+### `create_listing(seller, token, amount, asset_type, expires_at) → u64`
+
+Called by the seller to register a new trade offer on-chain. Returns the assigned trade ID.
+
+**Authorisation:** The seller address must sign the transaction — `seller.require_auth()` is enforced as the first statement.
+
+---
+
 ## Security
 
 - **Timelocks:** Buyers can self-refund after 24 hours if the trade is not completed.
