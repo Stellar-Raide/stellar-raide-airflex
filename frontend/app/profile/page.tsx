@@ -19,6 +19,7 @@ interface ProfileData {
   createdAt: string;
   totalTradesCompleted: number;
   stellarPublicKey: string;
+  kycStatus: "unverified" | "pending" | "verified" | "rejected";
 }
 
 interface ProfileResponse {
@@ -482,6 +483,42 @@ export default function ProfilePage() {
               value={profile.totalTradesCompleted}
             />
           </div>
+
+          {/* KYC verification status */}
+          <Card className="mt-4 flex flex-col gap-2 p-5">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              Seller verification (KYC)
+            </p>
+            {profile.kycStatus === "verified" ? (
+              <p className="text-sm font-semibold text-green-700 dark:text-green-400">
+                ✓ Verified — you can create listings on the marketplace.
+              </p>
+            ) : profile.kycStatus === "pending" ? (
+              <>
+                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                  ⏳ KYC Pending Review
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Your documents are being reviewed. Selling will be enabled once approved.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                  Verification required to sell
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Complete identity verification before creating marketplace listings.
+                </p>
+                <a
+                  href="/kyc"
+                  className="mt-1 inline-flex w-fit items-center text-sm font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-400"
+                >
+                  Start KYC verification →
+                </a>
+              </>
+            )}
+          </Card>
 
           {/* Stellar public key */}
           {profile.stellarPublicKey && (

@@ -137,9 +137,66 @@ MARKETPLACE_CONTRACT_ID=C...
 
 ---
 
+## 🗄️ Storage Schema
+
+The escrow contract stores state across two Soroban storage tiers. Keys are defined
+in the `DataKey` enum in `escrow/src/lib.rs`.
+
+| Key | Tier | Value type | Description |
+|-----|------|------------|-------------|
+| `DataKey::Admin` | **instance** | `Address` | Platform admin / server signing key set at `initialize` |
+| `DataKey::TradeCounter` | **instance** | `u64` | Monotonic counter of listings created (`TradeCount` in docs) |
+| `DataKey::AllowedToken(Address)` | **instance** | `bool` | Whitelist entry for an accepted payment token (`Token` in docs) |
+| `DataKey::Paused` | **instance** | `bool` | Circuit-breaker pause flag |
+| `DataKey::TradeFillCounter(u64)` | **instance** | `u64` | Per-trade fill counter for partial purchases |
+| `DataKey::Trade(u64)` | **persistent** | `TradeOffer` | On-chain listing and escrow state for a trade ID |
+| `DataKey::SubEscrow(u64, u64)` | **persistent** | `SubEscrow` | Per-fill escrow record (trade ID + fill ID) |
+
+### TTL strategy
+
+- **Instance storage** is bumped on every contract call via `extend_ttl(17_280, 17_280 * 30)` at initialization and on subsequent writes, keeping admin config and counters alive for the lifetime of active trades.
+- **Persistent trade entries** (`DataKey::Trade`, `DataKey::SubEscrow`) are bumped on every state transition (create, deposit, release, cancel, dispute) with the same 30-day extension window — entries expire **30 days after their last update** if not refreshed.
+- **Completed and cancelled trades** are retained on-ledger for **7 days** after their terminal state transition, then allowed to archive once TTL is not extended.
+
+### 🔑 How to Query State Off-Chain
+
+Read a `TradeOffer` from persistent storage using the Soroban RPC `getLedgerEntries`
+endpoint. Replace `CONTRACT_ID`, `TRADE_ID`, and `SOROBAN_RPC_URL` with your values:
+
+```bash
+# Trade key is XDR-encoded (symbol "Trade" + u64 trade ID)
+curl -s -X POST "$SOROBAN_RPC_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "getLedgerEntries",
+    "params": {
+      "keys": [{
+        "contractData": {
+          "contract": "CONTRACT_ID",
+          "key": "BASE64_ENCODED_DATA_KEY_TRADE_ID",
+          "durability": "persistent"
+        }
+      }]
+    }
+  }'
+```
+
+Generate the base64 key with the Stellar CLI:
+
+```bash
+stellar contract read --id CONTRACT_ID --key Trade --trade-id TRADE_ID --durability persistent
+```
+
+The returned XDR decodes to a `TradeOffer` struct (seller, token, amounts, status, etc.).
+
+---
+
 ## Security
 
 - **Timelocks:** Buyers can self-refund after 24 hours if the trade is not completed.
 - **Admin-only oracle:** Only the initialised admin address can call `release_payment`.
+  Who calls it: System Backend (must be the admin/oracle address set at initialization).
 - **Pause circuit-breaker:** Admin can pause all state-mutating operations in an emergency.
 - **Reentrancy:** Soroban's host environment prevents re-entrant calls natively.
