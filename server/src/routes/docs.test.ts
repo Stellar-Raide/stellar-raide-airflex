@@ -14,7 +14,7 @@ process.env["ENCRYPTION_KEY"] = "000102030405060708090a0b0c0d0e0f101112131415161
 process.env["STELLAR_SERVER_SECRET"] = "SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 process.env["NODE_ENV"] = "development";
 
-import app from "./index";
+import app from "../index";
 
 describe("docs routes", () => {
   describe("GET /api/docs.json", () => {
