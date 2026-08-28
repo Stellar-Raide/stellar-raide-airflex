@@ -62,6 +62,9 @@
     "roots": [
       "<rootDir>/src"
     ],
+    "moduleNameMapper": {
+      "^@server/(.*)$": "<rootDir>/src/$1"
+    },
     "testMatch": [
       "**/*.test.ts"
     ],

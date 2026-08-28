@@ -129,6 +129,7 @@ app.use(
 // signature check needs the original bytes, not req.body. See routes/webhooks.
 app.use(
   express.json({
+    limit: "10kb",
     verify: (req, _res, buf) => {
       (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
     },

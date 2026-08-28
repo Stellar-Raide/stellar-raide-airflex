@@ -21,7 +21,6 @@ import { QueueService } from "../jobs";
 import { SseEmitter } from "../services/sseEmitter";
 import pool from "../db";
 import { resolveDispute } from "../services/stellar";
-import { SseEmitter } from "../services/sseEmitter";
 import {
   resolveDisputeSchema,
   paginationSchema,
