@@ -20,3 +20,8 @@ export {
   type BuyTradeInput,
   type PaginationInput,
 } from "./trade.schemas";
+
+export {
+  resolveDisputeSchema,
+  type ResolveDisputeInput,
+} from "./admin.schemas";
