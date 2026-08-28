@@ -12,9 +12,10 @@
 process.env["JWT_SECRET"] = "test-secret-at-least-32-chars-long!";
 process.env["DATABASE_URL"] = "postgresql://test:test@localhost/test";
 process.env["ESCROW_CONTRACT_ADDRESS"] = "CCBJ235OCBFZXBFSUUUT4PMG7RRCAXZXMUEB2L7CTTQ5NRSNO4P2SLNP";
-process.env["ENCRYPTION_KEY"] = "a".repeat(64);
+process.env["ENCRYPTION_KEY"] = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 process.env["STELLAR_SERVER_SECRET"] = "SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
-process.env["PLATFORM_TREASURY_USER_ID"] = "test-treasury-user-id";
+process.env["PLATFORM_TREASURY_USER_ID"] = "00000000-0000-0000-0000-000000000000";
+process.env["NODE_ENV"] = "test";
 
 import request from "supertest";
 import app from "./index";
