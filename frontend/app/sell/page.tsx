@@ -3,6 +3,7 @@
 import { useState, useEffect, type FormEvent, type ChangeEvent } from "react";
 import { getToken, isAuthenticated } from "../lib/auth";
 import type { TradeOffer } from "../../../server/src/types/trade";
+import { CurrencyInput } from "../../components/CurrencyInput";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -441,29 +442,18 @@ export default function SellPage() {
           hint="How much the buyer will pay. Must be greater than zero."
           error={errors.amount}
         >
-          <div className="relative">
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-sm font-semibold text-gray-400 dark:text-gray-500"
-            >
-              ₦
-            </span>
-            <input
-              id="amount"
-              name="amount"
-              type="number"
-              inputMode="decimal"
-              min="0.01"
-              step="0.01"
-              placeholder="500"
-              value={fields.amount}
-              onChange={handleChange}
-              disabled={loading || kycBlocked}
-              aria-describedby={errors.amount ? "amount-error" : undefined}
-              aria-invalid={errors.amount ? "true" : undefined}
-              className={`${inputBase} pl-8 ${errors.amount ? inputError : inputNormal}`}
-            />
-          </div>
+          <CurrencyInput
+            id="amount"
+            name="amount"
+            value={fields.amount}
+            onChange={(val) => {
+              setFields((prev) => ({ ...prev, amount: val ? String(val) : "" }));
+              if (errors.amount) setErrors((prev) => ({ ...prev, amount: undefined }));
+              if (serverError) setServerError(null);
+            }}
+            disabled={loading || kycBlocked}
+            placeholder="500"
+          />
         </Field>
 
         {/* Expiry */}

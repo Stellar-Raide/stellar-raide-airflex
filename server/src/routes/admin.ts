@@ -27,6 +27,7 @@ import {
   type ResolveDisputeInput,
 } from "../schemas";
 import type { TradeOffer } from "../types/trade";
+import { FraudDetectionService } from "../services/fraudDetection";
 
 const router = Router();
 
@@ -373,6 +374,23 @@ router.get(
         tradeHistory,
       },
     });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/admin/flagged-accounts  (admin only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns accounts flagged for velocity violations (> 3 violations in past 24h).
+ */
+router.get(
+  "/flagged-accounts",
+  authenticate,
+  authorize("admin"),
+  async (_req, res) => {
+    const flagged = await FraudDetectionService.getFlaggedAccounts();
+    res.status(200).json({ flaggedAccounts: flagged });
   }
 );
 
