@@ -2,6 +2,8 @@
 
 Soroban (Rust) smart contracts for the AirFlex P2P airtime/data marketplace on the Stellar network.
 
+**Last Updated:** August 28, 2026
+
 ---
 
 ## Contracts
@@ -193,19 +195,43 @@ The returned XDR decodes to a `TradeOffer` struct (seller, token, amounts, statu
 
 ---
 
-## Escrow Contract Functions
+## ⚡ Contract Functions
 
-### `create_listing(seller, token, amount, asset_type, expires_at) → u64`
+### 1. `create_listing`
 
-Called by the seller to register a new trade offer on-chain. Returns the assigned trade ID.
+**Who calls it:** The Seller
 
-**Authorisation:** The seller address must sign the transaction — `seller.require_auth()` is enforced as the first statement.
+* **Parameters:** `seller: Address`, `token: Address`, `amount: i128`, `asset_type: Symbol`, `expires_at: u64`
+* **Returns:** `u64` (the new trade ID)
+* **Logic:** Registers a new trade offer in persistent storage and sets its status to `Open`. Validates that `expires_at` is in the future, `amount` is positive, and the payment token is whitelisted.
+* **Authorisation:** The seller address must sign the transaction — `seller.require_auth()` is enforced before any state writes.
 
-### `deposit_to_escrow(buyer, trade_id, fill_amount)`
+### 2. `deposit_to_escrow`
 
-Locks the buyer's funds into escrow for a specific trade. Sets trade status to `Locked` when fully filled.
+**Who calls it:** The Buyer
 
-**Authorisation:** Caller must be the buyer — `buyer.require_auth()` is enforced before reading trade state or transferring tokens.
+* **Parameters:** `buyer: Address`, `trade_id: u64`, `fill_amount: i128`
+* **Returns:** `()`
+* **Logic:** Transfers tokens from the buyer to the contract's escrow storage. Records a sub-escrow entry for the fill and transitions trade status to `Locked` once fully filled (or `PartiallyFilled` for partial purchases).
+* **Authorisation:** Caller must be the buyer — `buyer.require_auth()` is enforced before reading trade state or transferring tokens.
+
+### 3. `release_payment`
+
+**Who calls it:** System Backend (via Oracle / Admin)
+
+* **Parameters:** `caller: Address`, `trade_id: u64`, `fill_id: u64`
+* **Returns:** `()`
+* **Logic:** Finalizes the trade once delivery of airtime or data is verified by transferring funds from the contract to the seller. Sets the sub-escrow to released and transitions the trade status to `Completed` when all fills are released.
+* **Authorisation:** Caller must be the contract admin address — `caller.require_auth()` is enforced.
+
+### 4. `cancel_and_refund`
+
+**Who calls it:** Buyer (after timelock) or Admin (immediate bypass)
+
+* **Parameters:** `caller: Address`, `trade_id: u64`
+* **Returns:** `()`
+* **Logic:** Caller guard enforces that only the buyer or the contract admin can invoke this function. If the caller is the buyer, an additional check enforces the 24-hour timelock (the trade must have been in `Locked` status for at least 86,400 seconds; premature calls fail). If the caller is the admin, the timelock check is bypassed for immediate cancellation and dispute resolution. Escrowed tokens are transferred back to the buyer and trade status transitions to `Cancelled`.
+* **Authorisation:** Caller must authenticate with `caller.require_auth()`. Any caller other than the buyer or admin is rejected with an unauthorized error.
 
 ---
 

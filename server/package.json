@@ -12,7 +12,9 @@
     "test": "jest --runInBand --forceExit",
     "test:watch": "jest --watch",
     "generate:openapi": "ts-node scripts/generate-openapi.ts",
-    "check:openapi": "ts-node scripts/generate-openapi.ts && git diff --exit-code openapi.json"
+    "check:openapi": "ts-node scripts/generate-openapi.ts && git diff --exit-code openapi.json",
+    "db:migrate": "ts-node src/db/migrate.ts",
+    "db:migrate:rollback": "ts-node src/db/migrate.ts rollback"
   },
   "dependencies": {
     "@stellar-raide-stellar-raide-airflex/shared": "workspace:*",
@@ -24,6 +26,7 @@
     "@opentelemetry/sdk-node": "0.57.0",
     "@opentelemetry/semantic-conventions": "1.30.0",
     "@stellar/stellar-sdk": "12.3.0",
+    "bcryptjs": "^3.0.3",
     "busboy": "1.6.0",
     "cors": "2.8.5",
     "dotenv": "16.4.5",
@@ -73,6 +76,9 @@
       "js",
       "json"
     ],
+    "moduleNameMapper": {
+      "^@server/(.*)$": "<rootDir>/src/$1"
+    },
     "transform": {
       "^.+\\.ts$": [
         "ts-jest",
