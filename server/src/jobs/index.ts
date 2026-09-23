@@ -10,6 +10,7 @@ import { fundStellarAccountProcessor }    from "./processors/fund-stellar-accoun
 import { createVirtualAccountProcessor }  from "./processors/create-virtual-account";
 import { sendNotificationProcessor }      from "./processors/send-notification";
 import { verifyTradeDeliveryProcessor }   from "./processors/verify-trade-delivery";
+import { processPaystackWebhookProcessor } from "./processors/process-paystack-webhook";
 
 /** Initialise the queue service and register all processors. */
 export function initJobQueue(): void {
@@ -21,6 +22,7 @@ export function initJobQueue(): void {
   QueueService.register("create-virtual-account",  createVirtualAccountProcessor);
   QueueService.register("send-notification",       sendNotificationProcessor);
   QueueService.register("verify-trade-delivery",   verifyTradeDeliveryProcessor);
+  QueueService.register("process-paystack-webhook", processPaystackWebhookProcessor);
 }
 
 // Re-export queue primitives so route/service files only import from here

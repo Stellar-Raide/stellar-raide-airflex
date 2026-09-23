@@ -394,4 +394,57 @@ router.get(
   }
 );
 
+// ---------------------------------------------------------------------------
+// Webhook dead-letter inspection (#118)
+// ---------------------------------------------------------------------------
+
+router.get(
+  "/webhooks",
+  authenticate,
+  authorize("admin"),
+  async (_req, res) => {
+    const { rows } = await pool.query(
+      `SELECT id, provider, event_type, payload, status, processed_at, created_at
+       FROM webhook_events
+       WHERE status = 'failed'
+       ORDER BY created_at DESC
+       LIMIT 100`
+    );
+    res.status(200).json({ events: rows });
+  }
+);
+
+router.post(
+  "/webhooks/:id/replay",
+  authenticate,
+  authorize("admin"),
+  async (req, res) => {
+    const id = req.params["id"];
+
+    const { rows } = await pool.query<{ id: string; status: string }>(
+      `SELECT id, status FROM webhook_events WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+
+    if (!rows.length) {
+      res.status(404).json({ error: "Webhook event not found" });
+      return;
+    }
+
+    if (rows[0]!.status !== "failed") {
+      res.status(409).json({ error: "Only failed webhook events can be replayed" });
+      return;
+    }
+
+    await pool.query(
+      `UPDATE webhook_events SET status = 'pending', processed_at = NULL WHERE id = $1`,
+      [id]
+    );
+
+    await QueueService.enqueue("process-paystack-webhook", { webhookEventId: id });
+
+    res.status(202).json({ message: "Webhook re-enqueued for processing" });
+  }
+);
+
 export default router;

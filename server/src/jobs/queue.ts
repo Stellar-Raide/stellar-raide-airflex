@@ -27,9 +27,10 @@
  *   create-virtual-account  — create a Paystack virtual account for a user
  *   send-notification       — dispatch an SMS/email notification via Termii
  *   verify-trade-delivery   — async delivery verification with Soroban oracle
+ *   process-paystack-webhook — async Paystack webhook processing (#118)
  */
 
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import logger from "../utils/logger";
 
 // ---------------------------------------------------------------------------
@@ -41,6 +42,7 @@ export const JOB_QUEUES = [
   "create-virtual-account",
   "send-notification",
   "verify-trade-delivery",
+  "process-paystack-webhook",
 ] as const;
 
 export type QueueName = (typeof JOB_QUEUES)[number];

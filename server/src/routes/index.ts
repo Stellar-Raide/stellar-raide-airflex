@@ -19,6 +19,7 @@ export function registerRoutes(app: Express): void {
   app.use('/api/v1/profile', profileRouter);
   app.use('/api/v1/webhooks', webhooksRouter);
   app.use('/api/v1/admin', adminRouter);
+  app.use('/api/admin', adminRouter);
   app.use('/api/v1/events', eventsRouter);
   app.use('/api/v1/referrals', referralsRouter);
 
