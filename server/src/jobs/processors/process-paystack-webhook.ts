@@ -71,7 +71,7 @@ export async function processPaystackWebhookProcessor(
         eventId: webhookEventId,
         eventType: event.event,
       });
-      SseEmitter.emitAdmin({
+      SseEmitter.emitAll({
         type: "admin_alert",
         message: `Paystack webhook ${webhookEventId} failed after ${job.maxAttempts} attempts`,
       });
