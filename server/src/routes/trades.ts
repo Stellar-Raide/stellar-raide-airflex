@@ -15,8 +15,10 @@ import {
   createTradeSchema,
   buyTradeSchema,
   paginationSchema,
+  createRatingSchema,
   type CreateTradeInput,
   type BuyTradeInput,
+  type CreateRatingInput,
 } from "../schemas";
 
 const router = Router();
@@ -40,10 +42,20 @@ router.get(
     const { page, limit } = parsed.data;
     const offset = (page - 1) * limit;
 
-    const { rows: trades } = await pool.query<TradeOffer>(
-      `SELECT * FROM trade_offers
-       WHERE status = 'Active' AND expires_at > NOW()
-       ORDER BY created_at DESC
+    const { rows: trades } = await pool.query<
+      TradeOffer & { seller_average_rating: number; seller_review_count: number }
+    >(
+      `SELECT t.*,
+              COALESCE(sr.avg_stars, 0)::float8 AS seller_average_rating,
+              COALESCE(sr.review_count, 0)::int AS seller_review_count
+       FROM trade_offers t
+       LEFT JOIN LATERAL (
+         SELECT AVG(stars)::numeric(4,2) AS avg_stars, COUNT(*)::int AS review_count
+         FROM ratings
+         WHERE reviewee_id = t.seller_id
+       ) sr ON TRUE
+       WHERE t.status = 'Active' AND t.expires_at > NOW()
+       ORDER BY t.created_at DESC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
@@ -345,6 +357,57 @@ router.post(
       message: "Trade successfully disputed. An admin will review within 24 hours.",
       data: updated[0],
     });
+  })
+);
+
+router.post(
+  "/:id/rate",
+  authenticate,
+  validate(createRatingSchema),
+  asyncHandler(async (req, res) => {
+    const tradeId = req.params["id"];
+    const { stars, comment } = req.body as CreateRatingInput;
+    const { sub: reviewerId } = (req as AuthenticatedRequest).user;
+
+    const { rows: trades } = await pool.query<TradeOffer>(
+      `SELECT * FROM trade_offers WHERE id = $1 LIMIT 1`,
+      [tradeId]
+    );
+
+    if (!trades.length) {
+      res.status(404).json({ error: "Trade not found" });
+      return;
+    }
+
+    const trade = trades[0]!;
+
+    if (trade.status !== "Completed") {
+      res.status(400).json({ error: "Only completed trades can be rated" });
+      return;
+    }
+
+    if (trade.buyer_id !== reviewerId) {
+      res.status(403).json({ error: "Only the buyer can rate this trade" });
+      return;
+    }
+
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO ratings (trade_id, reviewer_id, reviewee_id, stars, comment)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [tradeId, reviewerId, trade.seller_id, stars, comment ?? null]
+      );
+
+      res.status(201).json({ data: rows[0] });
+    } catch (err: unknown) {
+      const pgCode = (err as { code?: string }).code;
+      if (pgCode === "23505") {
+        res.status(409).json({ error: "This trade has already been rated" });
+        return;
+      }
+      throw err;
+    }
   })
 );
 

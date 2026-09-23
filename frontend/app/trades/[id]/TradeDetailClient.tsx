@@ -193,6 +193,12 @@ export default function TradeDetailClient({ trade }: Props) {
   const isLocked = status === "Locked";
   const canBuy   = authed && isActive && !countdown.expired && !isSeller;
 
+  const RATING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+  const canRateSeller =
+    isBuyer &&
+    status === "Completed" &&
+    Date.now() - new Date(trade.updated_at).getTime() < RATING_WINDOW_MS;
+
   const sellerAlias = `@seller_${trade.seller_id.slice(-8)}`;
 
   async function handleBuy() {
@@ -495,6 +501,15 @@ export default function TradeDetailClient({ trade }: Props) {
           >
             {t("offerHasExpired")}
           </p>
+        )}
+
+        {canRateSeller && (
+          <a
+            href={`/trades/${trade.id}/rate`}
+            className="inline-flex items-center justify-center rounded-xl bg-violet-600 px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
+          >
+            Rate this seller
+          </a>
         )}
 
         <Button
