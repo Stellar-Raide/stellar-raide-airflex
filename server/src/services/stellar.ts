@@ -6,6 +6,7 @@ import {
   TransactionBuilder,
   BASE_FEE,
   xdr,
+  Transaction,
   Address,
   nativeToScVal,
   Contract,
@@ -281,17 +282,24 @@ export async function createListing(params: {
 }
 
 /**
- * Calls the smart contract's `deposit_to_escrow` function to lock
- * a buyer's funds against a specific listing.
+ * Builds — but does not sign — the `deposit_to_escrow` transaction for a buyer.
  *
- * @returns Transaction hash of the confirmed escrow deposit
+ * This is the first half of the client-side signing flow (Issue #342). The
+ * server knows the contract, the listing and the amount; the buyer's browser
+ * knows the key. Splitting build from submit means the secret key never leaves
+ * the buyer's device and never appears in a request body.
+ *
+ * The returned XDR is already simulated and assembled by
+ * `prepareTransaction`, so the client only has to sign it.
+ *
+ * @returns the unsigned transaction envelope (base64 XDR) plus the network
+ *          passphrase the client must sign against
  */
-export async function depositToEscrow(params: {
+export async function buildEscrowDepositXdr(params: {
   buyerPublicKey: string;
-  buyerSecretKey: string;
   listingId: string;
   amount: number;
-}): Promise<string> {
+}): Promise<{ xdr: string; networkPassphrase: string }> {
   const contractAddress = ESCROW_CONTRACT_ID;
   if (!contractAddress) {
     throw new Error(
@@ -300,15 +308,13 @@ export async function depositToEscrow(params: {
   }
 
   const tracer = getTracer();
-  return tracer.startActiveSpan("soroban.deposit_to_escrow", async (span: Span) => {
+  return tracer.startActiveSpan("soroban.build_deposit_xdr", async (span: Span) => {
     span.setAttribute("soroban.contract_id", contractAddress);
     span.setAttribute("soroban.function", "deposit_to_escrow");
-    span.setAttribute("soroban.network", process.env["STELLAR_NETWORK"] ?? "testnet");
     span.setAttribute("trade.listing_id", params.listingId);
     span.setAttribute("trade.amount", params.amount);
 
     try {
-      const keypair = Keypair.fromSecret(params.buyerSecretKey);
       const account = await horizonServer.loadAccount(params.buyerPublicKey);
       const contract = new Contract(contractAddress);
 
@@ -324,13 +330,69 @@ export async function depositToEscrow(params: {
             nativeToScVal(BigInt(params.amount * 1_000_000), { type: "i128" })
           )
         )
-        .setTimeout(30)
+        // Longer than the server-signed path: the clock is now running while a
+        // human finds their key and the browser signs, not just while the
+        // server round-trips.
+        .setTimeout(180)
         .build();
 
       const preparedTx = await sorobanServer.prepareTransaction(tx);
-      preparedTx.sign(keypair);
 
-      const response = await sorobanServer.sendTransaction(preparedTx);
+      return {
+        xdr: preparedTx.toXDR(),
+        networkPassphrase: NETWORK_PASSPHRASE,
+      };
+    } catch (err) {
+      span.recordException(err as Error);
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { SpanStatusCode } = require("@opentelemetry/api");
+      span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+      throw err;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+/**
+ * Submits a transaction the client already signed, and waits for it to confirm.
+ *
+ * `expectedSourceAccount` is checked before submission so a caller cannot use
+ * their own session to push through a transaction signed for someone else's
+ * account.
+ *
+ * @returns Transaction hash of the confirmed transaction
+ */
+export async function submitSignedTransaction(params: {
+  signedXdr: string;
+  expectedSourceAccount: string;
+}): Promise<string> {
+  const tracer = getTracer();
+  return tracer.startActiveSpan("soroban.submit_signed_tx", async (span: Span) => {
+    try {
+      let tx;
+      try {
+        tx = TransactionBuilder.fromXDR(params.signedXdr, NETWORK_PASSPHRASE);
+      } catch {
+        throw new Error("Signed transaction is not valid XDR for this network");
+      }
+
+      // Soroban invocations are never fee-bump envelopes, and a fee-bump wraps
+      // an inner transaction whose source we have not checked — reject rather
+      // than reason about it.
+      if (!(tx instanceof Transaction)) {
+        throw new Error("Fee-bump transactions are not accepted for escrow deposits");
+      }
+
+      if (tx.source !== params.expectedSourceAccount) {
+        throw new Error("Signed transaction source account does not match the authenticated buyer");
+      }
+
+      if (!tx.signatures.length) {
+        throw new Error("Transaction is not signed");
+      }
+
+      const response = await sorobanServer.sendTransaction(tx);
 
       if (response.status === "ERROR") {
         const parsed = parseContractError(response);
