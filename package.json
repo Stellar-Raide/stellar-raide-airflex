@@ -7,6 +7,7 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "load:test": "bash tests/load/run-all.sh",
     "clean": "turbo run clean"
   },
   "devDependencies": {

@@ -35,3 +35,9 @@ export {
   ANALYTICS_DEFAULT_WINDOW_DAYS,
   type AnalyticsDateRangeInput,
 } from "./analytics.schemas";
+
+export {
+  createRatingSchema,
+  userRatingsPaginationSchema,
+  type CreateRatingInput,
+} from "./ratings.schemas";

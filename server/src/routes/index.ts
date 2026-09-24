@@ -10,6 +10,7 @@ import docsRouter from './docs';
 import referralsRouter from './referrals';
 import kycRouter from './kyc';
 import analyticsRouter from './analytics';
+import usersRouter from './users';
 
 export function registerRoutes(app: Express): void {
   // API v1 routes
@@ -19,6 +20,7 @@ export function registerRoutes(app: Express): void {
   app.use('/api/v1/profile', profileRouter);
   app.use('/api/v1/webhooks', webhooksRouter);
   app.use('/api/v1/admin', adminRouter);
+  app.use('/api/admin', adminRouter);
   app.use('/api/v1/events', eventsRouter);
   app.use('/api/v1/referrals', referralsRouter);
 
@@ -33,6 +35,8 @@ export function registerRoutes(app: Express): void {
 
   // Legacy alias paths
   app.use('/api/trades', tradesRouter);
+  app.use('/api/users', usersRouter);
+  app.use('/api/v1/users', usersRouter);
   app.use('/api/events', eventsRouter);
 
   // OpenAPI 3.1 spec + Swagger UI
