@@ -1,9 +1,13 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import pool from "../db";
 import { authenticate, AuthenticatedRequest } from "../middleware/authenticate";
 import { validate } from "../middleware/validate";
-import { createListing, depositToEscrow } from "../services/stellar";
+import {
+  createListing,
+  buildEscrowDepositXdr,
+  submitSignedTransaction,
+} from "../services/stellar";
 import {
   triggerVerification,
   VerificationError,
@@ -156,6 +160,87 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
+// Buy flow (Issue #342)
+// ---------------------------------------------------------------------------
+
+/**
+ * Loads a trade and checks it can be bought by `buyerId`.
+ *
+ * Both halves of the buy flow run the same checks: `prepare` so the client is
+ * not asked to sign a transaction that will be rejected, and `buy` because the
+ * trade can be locked by someone else in between the two calls.
+ *
+ * @returns the trade, or null after having already written the error response
+ */
+async function loadBuyableTrade(
+  id: string,
+  buyerId: string,
+  res: Response
+): Promise<TradeOffer | null> {
+  const { rows } = await pool.query<TradeOffer>(
+    `SELECT * FROM trade_offers WHERE id = $1`,
+    [id]
+  );
+
+  if (!rows.length) {
+    res.status(404).json({ error: "Trade offer not found" });
+    return null;
+  }
+
+  const trade = rows[0]!;
+
+  if (trade.status !== "Active") {
+    res.status(400).json({
+      error: `Trade is not available for purchase (status: ${trade.status})`,
+    });
+    return null;
+  }
+
+  if (!trade.contract_listing_id) {
+    res.status(400).json({ error: "Trade has no associated contract listing" });
+    return null;
+  }
+
+  if (trade.seller_id === buyerId) {
+    res.status(400).json({ error: "Seller cannot buy their own trade" });
+    return null;
+  }
+
+  return trade;
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/trades/:id/buy/prepare  (authenticated)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the unsigned escrow deposit transaction for the buyer to sign
+ * locally. No request body — everything needed is derived from the trade and
+ * the authenticated session.
+ */
+router.post(
+  "/:id/buy/prepare",
+  authenticate,
+  async (req, res) => {
+    const { id } = req.params;
+    const { sub: buyerId, stellarPublicKey } = (req as unknown as AuthenticatedRequest).user;
+
+    const trade = await loadBuyableTrade(id!, buyerId, res);
+    if (!trade) return;
+
+    const { xdr: unsignedXdr, networkPassphrase } = await buildEscrowDepositXdr({
+      buyerPublicKey: stellarPublicKey,
+      listingId: trade.contract_listing_id!,
+      amount: trade.amount,
+    });
+
+    res.status(200).json({
+      data: { xdr: unsignedXdr, networkPassphrase, publicKey: stellarPublicKey },
+    });
+  }
+);
+
+// ---------------------------------------------------------------------------
 // POST /api/v1/trades/:id/buy  (authenticated)
 // ---------------------------------------------------------------------------
 
@@ -166,44 +251,16 @@ router.post(
   async (req, res) => {
     const { id } = req.params;
     const { sub: buyerId, stellarPublicKey } = (req as unknown as AuthenticatedRequest).user;
-    const { buyerSecretKey } = req.body as BuyTradeInput;
+    const { signedXdr } = req.body as BuyTradeInput;
 
-    // Load the trade offer
-    const { rows: tradeRows } = await pool.query<TradeOffer>(
-      `SELECT * FROM trade_offers WHERE id = $1`,
-      [id]
-    );
+    const trade = await loadBuyableTrade(id!, buyerId, res);
+    if (!trade) return;
 
-    if (!tradeRows.length) {
-      res.status(404).json({ error: "Trade offer not found" });
-      return;
-    }
-
-    const trade = tradeRows[0]!;
-
-    if (trade.status !== "Active") {
-      res.status(400).json({
-        error: `Trade is not available for purchase (status: ${trade.status})`,
-      });
-      return;
-    }
-
-    if (!trade.contract_listing_id) {
-      res.status(400).json({ error: "Trade has no associated contract listing" });
-      return;
-    }
-
-    if (trade.seller_id === buyerId) {
-      res.status(400).json({ error: "Seller cannot buy their own trade" });
-      return;
-    }
-
-    // Call Soroban deposit_to_escrow
-    const txHash = await depositToEscrow({
-      buyerPublicKey: stellarPublicKey,
-      buyerSecretKey: buyerSecretKey,
-      listingId: trade.contract_listing_id,
-      amount: trade.amount,
+    // Submit the envelope the buyer signed in their browser. The secret key
+    // itself never reaches this server.
+    const txHash = await submitSignedTransaction({
+      signedXdr,
+      expectedSourceAccount: stellarPublicKey,
     });
 
     // Lock the trade in the database
