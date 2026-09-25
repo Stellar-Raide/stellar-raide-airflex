@@ -197,8 +197,27 @@ router.get(
     const limitIdx  = dataParams.length - 1;
     const offsetIdx = dataParams.length;
 
+    // Explicitly listed (rather than `SELECT *`) so contract_listing_id and
+    // escrow_tx_hash are guaranteed present in the response — the frontend
+    // trade-history view links out to a Stellar explorer using exactly these
+    // two columns, and an explicit column list makes that contract visible
+    // here instead of depending on trade_offers' column set matching
+    // whatever `TradeOffer` happens to declare.
     const { rows: trades } = await pool.query<TradeOffer>(
-      `SELECT * FROM trade_offers
+      `SELECT id,
+              seller_id,
+              buyer_id,
+              asset_type,
+              amount,
+              fee_amount,
+              seller_net_amount,
+              status,
+              contract_listing_id,
+              escrow_tx_hash,
+              expires_at,
+              created_at,
+              updated_at
+       FROM trade_offers
        WHERE ${fullWhere}
        ORDER BY created_at DESC
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
