@@ -20,9 +20,11 @@ import {
   buyTradeSchema,
   paginationSchema,
   createRatingSchema,
+  disputeSchema,
   type CreateTradeInput,
   type BuyTradeInput,
   type CreateRatingInput,
+  type DisputeInput,
 } from "../schemas";
 
 const router = Router();
@@ -94,6 +96,28 @@ router.post(
   async (req, res) => {
     const { assetType, amount, expiresInHours } = req.body as CreateTradeInput;
     const { sub: sellerId, stellarPublicKey } = (req as unknown as AuthenticatedRequest).user;
+
+    // KYC gate: a seller must be verified before they can list a trade. This
+    // is checked here rather than only relying on the frontend, since the
+    // frontend check can be bypassed by calling the API directly.
+    const { rows: kycRows } = await pool.query<{ kyc_status: string | null }>(
+      `SELECT kyc_status FROM users WHERE id = $1 LIMIT 1`,
+      [sellerId]
+    );
+
+    if (!kycRows.length) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    if (kycRows[0]!.kyc_status !== "verified") {
+      res.status(403).json({
+        error:
+          "KYC verification is required before creating a trade listing. " +
+          "Submit your KYC documents via POST /api/kyc/submit.",
+      });
+      return;
+    }
 
     // Fetch seller's encrypted secret key from their wallet record
     const { rows: walletRows } = await pool.query<{
@@ -369,20 +393,11 @@ router.post(
 router.post(
   "/:id/dispute",
   authenticate,
+  validate(disputeSchema),
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { sub: userId } = (req as unknown as AuthenticatedRequest).user;
-    const { reason } = (req.body ?? {}) as { reason?: string };
-
-    if (!reason || typeof reason !== "string" || !reason.trim()) {
-      res.status(400).json({ error: "Dispute reason is required" });
-      return;
-    }
-
-    if (reason.trim().length > 500) {
-      res.status(400).json({ error: "Dispute reason cannot exceed 500 characters" });
-      return;
-    }
+    const { reason } = req.body as DisputeInput;
 
     // Fetch the trade offer
     const { rows: tradeRows } = await pool.query<TradeOffer>(
