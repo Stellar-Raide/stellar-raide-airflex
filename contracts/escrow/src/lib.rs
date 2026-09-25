@@ -514,7 +514,17 @@ impl EscrowContract {
             return Err(ContractError::Unauthorized);
         }
 
-        trade.filled_amount -= refunded_amount;
+        // `refunded_amount` is the sum of sub-escrow amounts we just walked and
+        // refunded above, so it should never exceed `filled_amount` — but a
+        // plain `-=` would either silently wrap (host panics are disabled) or
+        // abort the whole contract call on a host trap (this workspace builds
+        // with `overflow-checks = true`) if that invariant were ever violated
+        // by a future change. `checked_sub` turns that into an ordinary
+        // `Result::Err` the caller can handle instead of a low-level trap.
+        trade.filled_amount = trade
+            .filled_amount
+            .checked_sub(refunded_amount)
+            .ok_or(ContractError::InsufficientFunds)?;
 
         if is_admin {
             trade.status = TradeStatus::Cancelled;
@@ -598,10 +608,23 @@ impl EscrowContract {
     // -----------------------------------------------------------------------
 
     pub fn get_trade(env: Env, trade_id: u64) -> Result<TradeOffer, ContractError> {
-        env.storage()
+        let trade: TradeOffer = env
+            .storage()
             .persistent()
             .get(&DataKey::Trade(trade_id))
-            .ok_or(ContractError::TradeNotFound)
+            .ok_or(ContractError::TradeNotFound)?;
+
+        // Reading an entry does not by itself keep it alive: extend the TTL on
+        // every read, not just on write (as create_listing already does).
+        // Without this, a trade that is read frequently but written rarely
+        // (e.g. repeatedly polled while Locked, waiting on off-chain delivery)
+        // can still be evicted between the read here and a later write, since
+        // the two are not atomic from the caller's perspective (TOCTOU).
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Trade(trade_id), 17_280, 17_280 * 30);
+
+        Ok(trade)
     }
 
     pub fn trade_count(env: Env) -> u64 {
