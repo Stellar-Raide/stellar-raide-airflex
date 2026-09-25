@@ -1443,13 +1443,40 @@ export const openApiDocument = {
     },
 
     // ------------------------------------------------------------------ Events
-    "/api/events": {
+    //
+    // eventsRouter is mounted at both /api/v1/events (current) and /api/events
+    // (legacy alias — see routes/index.ts). Both paths are documented here so
+    // the versioned endpoint clients are told to use isn't missing from the
+    // spec (issue: the SSE endpoint was undocumented under its /api/v1 path).
+    "/api/v1/events": {
       get: {
         tags: ["Events"],
         summary: "Server-Sent Events stream",
         description:
           "Persistent SSE connection for real-time trade status updates. " +
-          "Event types: `connected`, `trade_completed`, `trade_disputed`, `admin_alert`.",
+          "Event types: `connected`, `trade_completed`, `trade_disputed`, `admin_alert`. " +
+          "Also available, unversioned, at `/api/events` for backwards compatibility.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "SSE stream opened.",
+            content: {
+              "text/event-stream": {
+                schema: { type: "string" },
+              },
+            },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
+    "/api/events": {
+      get: {
+        tags: ["Events"],
+        summary: "Server-Sent Events stream (legacy alias)",
+        description:
+          "Unversioned alias for `/api/v1/events`, kept for backwards " +
+          "compatibility. Prefer `/api/v1/events` for new integrations.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": {
