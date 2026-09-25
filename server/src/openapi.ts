@@ -288,6 +288,19 @@ export const openApiDocument = {
           },
         },
       },
+      DisputeBody: {
+        type: "object",
+        required: ["reason"],
+        properties: {
+          reason: {
+            type: "string",
+            minLength: 1,
+            maxLength: 500,
+            description: "Why the trade is being disputed.",
+            example: "Seller did not deliver the airtime after payment was locked.",
+          },
+        },
+      },
       PrepareBuyResponse: {
         type: "object",
         required: ["xdr", "networkPassphrase", "publicKey"],
@@ -1130,6 +1143,77 @@ export const openApiDocument = {
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" },
+          "500": { $ref: "#/components/responses/InternalError" },
+        },
+      },
+    },
+    "/api/v1/trades/{id}/dispute": {
+      post: {
+        tags: ["Trades"],
+        summary: "Dispute a locked trade",
+        description:
+          "Escalates a Locked trade to Disputed. Either the buyer or the seller " +
+          "of the trade may call this. An admin resolves the dispute via " +
+          "POST /api/v1/admin/trades/{id}/resolve.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/DisputeBody" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Trade successfully disputed.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    message: { type: "string" },
+                    data: { $ref: "#/components/schemas/TradeOffer" },
+                  },
+                },
+              },
+            },
+          },
+          "400": {
+            description: "Trade is not in a state that can be disputed.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": {
+            description: "Caller is neither the buyer nor the seller of this trade.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": {
+            description: "Trade is already disputed or is no longer Locked.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          "422": { $ref: "#/components/responses/UnprocessableEntity" },
           "500": { $ref: "#/components/responses/InternalError" },
         },
       },
