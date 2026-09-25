@@ -1,7 +1,7 @@
 import { Router, type Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import pool from "../db";
-import { authenticate, AuthenticatedRequest } from "../middleware/authenticate";
+import { authenticate, optionalAuthenticate, AuthenticatedRequest } from "../middleware/authenticate";
 import { validate } from "../middleware/validate";
 import {
   createListing,
@@ -139,12 +139,29 @@ router.post(
 // GET /api/v1/trades/:id
 // ---------------------------------------------------------------------------
 
+/**
+ * This route is intentionally public (no `authenticate`) so shared trade
+ * links and SSR page loads work without a session — but that also means
+ * anyone who knows (or guesses) a trade UUID could read it. `feeAmount` and
+ * `sellerNetAmount` are the platform's internal financial breakdown for the
+ * trade (fee taken, seller's net payout) and aren't shown anywhere in the
+ * public UI, so they're now only included when the caller authenticates
+ * (via `optionalAuthenticate`) as the trade's own buyer or seller. Every
+ * other field (status, asset type, amount, buyer/seller ids, escrow tx hash)
+ * stays public: they're either needed for the public trade page to render
+ * at all, or — like the escrow transaction hash — already treated as public,
+ * on-chain information elsewhere in this app (see the frontend's unguarded
+ * "Escrow Transaction" explorer link).
+ */
 router.get(
   "/:id",
+  optionalAuthenticate,
   async (req, res) => {
     const { id } = req.params;
 
-    const { rows } = await pool.query<TradeOffer>(
+    const { rows } = await pool.query<
+      TradeOffer & { feeAmount: number | null; sellerNetAmount: number | null }
+    >(
       `SELECT *, fee_amount AS "feeAmount", seller_net_amount AS "sellerNetAmount"
          FROM trade_offers WHERE id = $1`,
       [id]
@@ -155,7 +172,20 @@ router.get(
       return;
     }
 
-    res.status(200).json({ data: rows[0] });
+    const trade = rows[0]!;
+    const caller = (req as unknown as AuthenticatedRequest).user as
+      | AuthenticatedRequest["user"]
+      | undefined;
+    const isParty =
+      !!caller && (caller.sub === trade.seller_id || caller.sub === trade.buyer_id);
+
+    if (isParty) {
+      res.status(200).json({ data: trade });
+      return;
+    }
+
+    const { feeAmount: _feeAmount, sellerNetAmount: _sellerNetAmount, ...publicTrade } = trade;
+    res.status(200).json({ data: publicTrade });
   }
 );
 
