@@ -4,21 +4,7 @@ import { useState, useEffect, type FormEvent, type ChangeEvent } from "react";
 import { getToken, isAuthenticated } from "../lib/auth";
 import type { TradeOffer } from "../../../server/src/types/trade";
 import { CurrencyInput } from "../../components/CurrencyInput";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const ASSET_OPTIONS = [
-  { value: "MTN_AIRTIME",     label: "MTN — Airtime" },
-  { value: "MTN_DATA",        label: "MTN — Data" },
-  { value: "GLO_AIRTIME",     label: "Glo — Airtime" },
-  { value: "GLO_DATA",        label: "Glo — Data" },
-  { value: "AIRTEL_AIRTIME",  label: "Airtel — Airtime" },
-  { value: "AIRTEL_DATA",     label: "Airtel — Data" },
-  { value: "9MOBILE_AIRTIME", label: "9mobile — Airtime" },
-  { value: "9MOBILE_DATA",    label: "9mobile — Data" },
-] as const;
+import { ASSET_OPTIONS } from "../lib/assetTypes";
 
 const EXPIRY_OPTIONS = [
   { value: 1,   label: "1 hour" },

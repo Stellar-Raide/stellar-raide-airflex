@@ -54,13 +54,25 @@ router.get(
       return;
     }
 
-    const { page, limit } = parsed.data;
+    const { page, limit, assetType: assetTypeFilter } = parsed.data;
     const offset = (page - 1) * limit;
+
+    // Build WHERE clause — assetType filter is optional
+    const params: (number | string)[] = [];
+    let assetTypeClause = "";
+    if (assetTypeFilter) {
+      params.push(assetTypeFilter);
+      assetTypeClause = `AND t.asset_type = $${params.length}`;
+    }
 
     // Join ratings on reviewee_display_id so the count survives account
     // anonymisation (issue #362).  The display_id is captured at rating
     // creation time and is never modified by the anonymisation job, unlike
     // the raw UUID which becomes a dangling reference once PII is scrubbed.
+    params.push(limit, offset);
+    const limitIdx = params.length - 1;
+    const offsetIdx = params.length;
+
     const { rows: trades } = await pool.query<
       PublicTradeOffer & {
         seller_average_rating: number;
@@ -89,15 +101,23 @@ router.get(
          FROM ratings
          WHERE reviewee_display_id = t.seller_id::text
        ) sr ON TRUE
-       WHERE t.status = 'Active' AND t.expires_at > NOW()
+       WHERE t.status = 'Active' AND t.expires_at > NOW() ${assetTypeClause}
        ORDER BY t.created_at DESC
-       LIMIT $1 OFFSET $2`,
-      [limit, offset]
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      params
     );
+
+    const countParams: (string)[] = [];
+    let countAssetClause = "";
+    if (assetTypeFilter) {
+      countParams.push(assetTypeFilter);
+      countAssetClause = `AND asset_type = $1`;
+    }
 
     const { rows: countRows } = await pool.query<{ count: string }>(
       `SELECT COUNT(*) FROM trade_offers
-       WHERE status = 'Active' AND expires_at > NOW()`
+       WHERE status = 'Active' AND expires_at > NOW() ${countAssetClause}`,
+      countParams
     );
 
     const total = parseInt(countRows[0]?.count ?? "0", 10);
