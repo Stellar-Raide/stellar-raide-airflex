@@ -90,6 +90,7 @@ pub enum ContractError {
     InvalidAmount        = 12,
     FillAlreadyProcessed = 13,
     NotAParty            = 14,
+    PauseCooldownNotExpired = 15,
 }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +133,8 @@ fn get_admin(env: &Env) -> Result<Address, ContractError> {
         .ok_or(ContractError::Unauthorized)
 }
 
+const PAUSE_COOLDOWN_SECONDS: u64 = 300;
+
 // ---------------------------------------------------------------------------
 // Contract
 // ---------------------------------------------------------------------------
@@ -157,6 +160,7 @@ impl EscrowContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::TradeCounter, &0u64);
         env.storage().instance().set(&DataKey::Paused, &false);
+        env.storage().instance().set(&DataKey::LastPauseAt, &0u64);
         for token in allowed_tokens.iter() {
             env.storage()
                 .instance()
@@ -189,6 +193,7 @@ impl EscrowContract {
         }
 
         env.storage().instance().set(&DataKey::Paused, &true);
+        env.storage().instance().set(&DataKey::LastPauseAt, &now);
 
         env.events()
             .publish((topic_contract(), topic_paused()), ());
@@ -200,6 +205,17 @@ impl EscrowContract {
     pub fn unpause(env: Env) -> Result<(), ContractError> {
         let admin = get_admin(&env)?;
         admin.require_auth();
+
+        let now = env.ledger().timestamp();
+        let last_pause_at: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LastPauseAt)
+            .unwrap_or(0);
+
+        if last_pause_at > 0 && now < last_pause_at.saturating_add(PAUSE_COOLDOWN_SECONDS) {
+            return Err(ContractError::PauseCooldownNotExpired);
+        }
 
         env.storage().instance().set(&DataKey::Paused, &false);
         env.storage().instance().remove(&DataKey::PausedAt);
@@ -1425,6 +1441,29 @@ mod test {
             &(1_000_000 + 86_400),
         );
         assert_eq!(result, Ok(Err(ContractError::ContractPaused)));
+    }
+
+    #[test]
+    fn test_err_unpause_requires_pause_cooldown() {
+        let (env, client, _admin, _seller, _buyer, _token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        client.pause();
+
+        let result = client.try_unpause();
+        assert_eq!(result, Ok(Err(ContractError::PauseCooldownNotExpired)));
+    }
+
+    #[test]
+    fn test_unpause_after_cooldown_succeeds() {
+        let (env, client, _admin, _seller, _buyer, _token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        client.pause();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000 + 301);
+
+        client.unpause();
+        assert!(!client.is_paused());
     }
 
     #[test]
