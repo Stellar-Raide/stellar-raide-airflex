@@ -69,9 +69,16 @@ const sorobanServer = new SorobanRpc.Server(SOROBAN_RPC_URL, {
 });
 
 // ---------------------------------------------------------------------------
-// Server signing key (issue #313) — validated once at module load so a
-// missing/invalid secret fails server startup instead of failing queued
-// release jobs at runtime. Never exported; use getServerKeypair().
+// Server signing key (issue #313) — parsed and validated exactly once, on
+// first use, so a missing/invalid STELLAR_SERVER_SECRET surfaces as a clear
+// error instead of failing queued release jobs at runtime mid-flight.
+//
+// Deliberately *not* validated as a module-load side effect: boot-time
+// validation is owned by index.ts / config/validateEnv.ts (issue #383), which
+// reports every missing variable in one place and exits non-zero. Keeping this
+// module side-effect free also lets route tests import the app without a real
+// signing key configured. A non-fatal warning is still logged at startup (see
+// below) so a misconfigured deployment is visible in the boot logs.
 // ---------------------------------------------------------------------------
 
 function loadServerKeypair(): Keypair {
@@ -85,20 +92,41 @@ function loadServerKeypair(): Keypair {
     return Keypair.fromSecret(secret);
   } catch {
     throw new Error(
-      "STELLAR_SERVER_SECRET is invalid (not a decodable Stellar secret seed). Refusing to start."
+      "STELLAR_SERVER_SECRET is invalid (not a decodable Stellar secret seed)."
     );
   }
 }
 
-const serverKeypair = loadServerKeypair();
+let cachedServerKeypair: Keypair | null = null;
 
 /**
- * Internal accessor for the pre-validated server signing keypair.
- * The instance is intentionally not exported — call sites use this getter
- * so the secret-derived object never leaks into logs or responses.
+ * Internal accessor for the server signing keypair.
+ *
+ * The key is parsed and validated once and then cached; call sites use this
+ * getter so the secret-derived object never leaks into logs or responses.
  */
 export function getServerKeypair(): Keypair {
-  return serverKeypair;
+  if (!cachedServerKeypair) {
+    cachedServerKeypair = loadServerKeypair();
+  }
+  return cachedServerKeypair;
+}
+
+// Resolve (and validate) the server key as soon as this module loads so a
+// misconfigured deployment is visible in the startup logs immediately. This
+// only warns (never throws/exits) — index.ts's own REQUIRED_ENV_VARS check is
+// what actually fails startup for a missing STELLAR_SERVER_SECRET; this
+// mirrors the same non-fatal pattern used in config/contracts.ts for missing
+// contract IDs. Skipped under jest so test suites can import freely.
+const isTestEnv =
+  process.env["NODE_ENV"] === "test" || process.env["JEST_WORKER_ID"] !== undefined;
+
+if (!isTestEnv) {
+  try {
+    getServerKeypair();
+  } catch (err) {
+    console.warn(`[stellar] ${(err as Error).message}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -227,59 +255,6 @@ export async function getWalletBalance(publicKey: string): Promise<string> {
       return "0";
     }
     throw err;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Server signing key — resolved and validated once, not on every call
-// ---------------------------------------------------------------------------
-//
-// `releasePayment` and `resolveDispute` both sign with the platform's admin
-// key. Previously each call re-read STELLAR_SERVER_SECRET from process.env
-// and re-validated it was present via `Keypair.fromSecret`, so a missing or
-// malformed key would only surface the first time a trade actually needed
-// releasing/resolving — in production, under live traffic — rather than at
-// startup. `getServerKeypair()` resolves and parses the key exactly once and
-// caches the result; every subsequent call reuses the cached Keypair instead
-// of touching the environment again.
-let cachedServerKeypair: Keypair | null = null;
-
-function getServerKeypair(): Keypair {
-  if (cachedServerKeypair) {
-    return cachedServerKeypair;
-  }
-
-  const serverSecret = process.env["STELLAR_SERVER_SECRET"];
-  if (!serverSecret) {
-    throw new Error("STELLAR_SERVER_SECRET environment variable is not set");
-  }
-
-  try {
-    cachedServerKeypair = Keypair.fromSecret(serverSecret);
-  } catch (err) {
-    throw new Error(
-      `STELLAR_SERVER_SECRET is not a valid Stellar secret key: ${(err as Error).message}`
-    );
-  }
-
-  return cachedServerKeypair;
-}
-
-const isTestEnv =
-  process.env["NODE_ENV"] === "test" || process.env["JEST_WORKER_ID"] !== undefined;
-
-// Resolve (and validate) the server key as soon as this module loads, rather
-// than waiting for the first releasePayment/resolveDispute call, so a
-// misconfigured deployment is visible in startup logs immediately. This only
-// warns (never throws/exits) — server/src/index.ts's own REQUIRED_ENV_VARS
-// check is what actually fails startup for a missing STELLAR_SERVER_SECRET;
-// this mirrors the same non-fatal pattern used in config/contracts.ts for
-// missing contract IDs.
-if (!isTestEnv) {
-  try {
-    getServerKeypair();
-  } catch (err) {
-    console.warn(`[stellar] ${(err as Error).message}`);
   }
 }
 
