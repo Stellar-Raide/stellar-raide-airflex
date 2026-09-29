@@ -18,10 +18,13 @@ pub enum DataKey {
     TradeCounter,
     Trade(u64),
     Paused,
+    PausedAt,
     AllowedToken(Address),
     TradeFillCounter(u64),
     SubEscrow(u64, u64),
 }
+
+pub const EMERGENCY_TIMELOCK_SECS: u64 = 72 * 60 * 60; // 72 hours = 259,200 seconds
 
 // ---------------------------------------------------------------------------
 // Types
@@ -87,6 +90,7 @@ pub enum ContractError {
     InvalidAmount        = 12,
     FillAlreadyProcessed = 13,
     NotAParty            = 14,
+    PauseCooldownNotExpired = 15,
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +133,8 @@ fn get_admin(env: &Env) -> Result<Address, ContractError> {
         .ok_or(ContractError::Unauthorized)
 }
 
+const PAUSE_COOLDOWN_SECONDS: u64 = 300;
+
 // ---------------------------------------------------------------------------
 // Contract
 // ---------------------------------------------------------------------------
@@ -154,6 +160,7 @@ impl EscrowContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::TradeCounter, &0u64);
         env.storage().instance().set(&DataKey::Paused, &false);
+        env.storage().instance().set(&DataKey::LastPauseAt, &0u64);
         for token in allowed_tokens.iter() {
             env.storage()
                 .instance()
@@ -174,7 +181,19 @@ impl EscrowContract {
         let admin = get_admin(&env)?;
         admin.require_auth();
 
+        let is_already_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+
+        if !is_already_paused {
+            let now = env.ledger().timestamp();
+            env.storage().instance().set(&DataKey::PausedAt, &now);
+        }
+
         env.storage().instance().set(&DataKey::Paused, &true);
+        env.storage().instance().set(&DataKey::LastPauseAt, &now);
 
         env.events()
             .publish((topic_contract(), topic_paused()), ());
@@ -187,7 +206,19 @@ impl EscrowContract {
         let admin = get_admin(&env)?;
         admin.require_auth();
 
+        let now = env.ledger().timestamp();
+        let last_pause_at: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LastPauseAt)
+            .unwrap_or(0);
+
+        if last_pause_at > 0 && now < last_pause_at.saturating_add(PAUSE_COOLDOWN_SECONDS) {
+            return Err(ContractError::PauseCooldownNotExpired);
+        }
+
         env.storage().instance().set(&DataKey::Paused, &false);
+        env.storage().instance().remove(&DataKey::PausedAt);
 
         env.events()
             .publish((topic_contract(), topic_unpaused()), ());
@@ -663,6 +694,67 @@ impl EscrowContract {
             .set(&DataKey::Trade(trade_id), &trade);
         env.events()
             .publish((topic_disputed(),), (trade_id, caller));
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // emergency_withdraw — admin recovery for trapped funds (Issue #346)
+    // -----------------------------------------------------------------------
+
+    /// Recovers trapped funds in the event of a critical bug or settlement deadlock.
+    ///
+    /// Requirements:
+    /// - Callable only by the admin.
+    /// - Contract must be currently paused.
+    /// - A 72-hour timelock must have elapsed since the contract was paused.
+    /// - Emits a high-severity `emergency_withdrawal` event.
+    pub fn emergency_withdraw(
+        env: Env,
+        token: Address,
+        recipient: Address,
+        amount: i128,
+    ) -> Result<(), ContractError> {
+        let admin = get_admin(&env)?;
+        admin.require_auth();
+
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+
+        if !is_paused {
+            return Err(ContractError::WrongStatus);
+        }
+
+        if amount <= 0 {
+            return Err(ContractError::InvalidAmount);
+        }
+
+        let paused_at: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PausedAt)
+            .unwrap_or(0);
+
+        let now = env.ledger().timestamp();
+        if now < paused_at + EMERGENCY_TIMELOCK_SECS {
+            return Err(ContractError::TimelockNotExpired);
+        }
+
+        let token_client = token::Client::new(&env, &token);
+        let contract_balance = token_client.balance(&env.current_contract_address());
+        if contract_balance < amount {
+            return Err(ContractError::InsufficientFunds);
+        }
+
+        token_client.transfer(&env.current_contract_address(), &recipient, &amount);
+
+        env.events().publish(
+            (Symbol::new(&env, "emergency_withdrawal"),),
+            (token, recipient, amount),
+        );
+
         Ok(())
     }
 
@@ -1352,6 +1444,29 @@ mod test {
     }
 
     #[test]
+    fn test_err_unpause_requires_pause_cooldown() {
+        let (env, client, _admin, _seller, _buyer, _token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        client.pause();
+
+        let result = client.try_unpause();
+        assert_eq!(result, Ok(Err(ContractError::PauseCooldownNotExpired)));
+    }
+
+    #[test]
+    fn test_unpause_after_cooldown_succeeds() {
+        let (env, client, _admin, _seller, _buyer, _token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        client.pause();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000 + 301);
+
+        client.unpause();
+        assert!(!client.is_paused());
+    }
+
+    #[test]
     fn test_err_unauthorized_get_admin_uninitialised() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1585,5 +1700,62 @@ mod fuzz {
             );
             assert_eq!(trade.status, TradeStatus::Cancelled);
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // emergency_withdraw tests (Issue #346)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_emergency_withdraw_success_after_timelock() {
+        let (env, client, _admin, _seller, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let sac = StellarAssetClient::new(&env, &token);
+        let contract_addr = client.address.clone();
+        sac.mint(&contract_addr, &1_000_0000000i128);
+
+        client.pause();
+
+        // Advance ledger time past 72 hours
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000 + EMERGENCY_TIMELOCK_SECS + 1);
+
+        let recipient = Address::generate(&env);
+        let initial_balance = sac.balance(&recipient);
+
+        client.emergency_withdraw(&token, &recipient, &500_0000000i128);
+
+        assert_eq!(sac.balance(&recipient), initial_balance + 500_0000000i128);
+    }
+
+    #[test]
+    fn test_emergency_withdraw_fails_before_timelock() {
+        let (env, client, _admin, _seller, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let sac = StellarAssetClient::new(&env, &token);
+        sac.mint(&client.address, &1_000_0000000i128);
+
+        client.pause();
+
+        // Only 1 hour passed
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000 + 3600);
+
+        let recipient = Address::generate(&env);
+        let result = client.try_emergency_withdraw(&token, &recipient, &500_0000000i128);
+        assert_eq!(result, Ok(Err(ContractError::TimelockNotExpired)));
+    }
+
+    #[test]
+    fn test_emergency_withdraw_fails_when_not_paused() {
+        let (env, client, _admin, _seller, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let sac = StellarAssetClient::new(&env, &token);
+        sac.mint(&client.address, &1_000_0000000i128);
+
+        let recipient = Address::generate(&env);
+        let result = client.try_emergency_withdraw(&token, &recipient, &500_0000000i128);
+        assert_eq!(result, Ok(Err(ContractError::WrongStatus)));
     }
 }
