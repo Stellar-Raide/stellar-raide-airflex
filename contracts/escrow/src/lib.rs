@@ -91,6 +91,7 @@ pub enum ContractError {
     FillAlreadyProcessed = 13,
     NotAParty = 14,
     PauseCooldownNotExpired = 15,
+    DuplicateFill = 16,
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +160,39 @@ fn get_admin(env: &Env) -> Result<Address, ContractError> {
 }
 
 const PAUSE_COOLDOWN_SECONDS: u64 = 300;
+
+/// Rejects a deposit from a buyer who already holds an *active* sub-escrow on
+/// this trade (issue #294).
+///
+/// Without this check a single buyer could call `deposit_to_escrow` repeatedly
+/// with small amounts — each one individually within the remaining capacity —
+/// and take over a listing that is meant to be shared by many buyers.
+///
+/// The rule is per `(trade, buyer)` and counts only *active* fills: a fill that
+/// has already been released or refunded no longer holds a place, so a buyer
+/// whose delivery completed (or whose funds were returned) can still buy into
+/// a listing that is only partially filled.
+fn require_no_active_fill(env: &Env, trade_id: u64, buyer: &Address) -> Result<(), ContractError> {
+    let fill_count: u64 = env
+        .storage()
+        .instance()
+        .get(&DataKey::TradeFillCounter(trade_id))
+        .unwrap_or(0);
+
+    for i in 1..=fill_count {
+        if let Some(sub_escrow) = env
+            .storage()
+            .persistent()
+            .get::<_, SubEscrow>(&DataKey::SubEscrow(trade_id, i))
+        {
+            if sub_escrow.buyer == *buyer && !sub_escrow.released && !sub_escrow.refunded {
+                return Err(ContractError::DuplicateFill);
+            }
+        }
+    }
+
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------
 // Contract
@@ -356,6 +390,11 @@ impl EscrowContract {
     ///
     /// Transfers `fill_amount` tokens from `buyer` → contract.
     /// Sets trade status to `Locked` when fully filled, `PartiallyFilled` otherwise.
+    ///
+    /// At most one *active* sub-escrow per buyer per trade is allowed — a buyer
+    /// holding an unreleased/unrefunded fill on this trade is rejected with
+    /// `DuplicateFill` (issue #294), so no single buyer can fill a public
+    /// listing repeatedly and monopolise it.
     pub fn deposit_to_escrow(
         env: Env,
         buyer: Address,
@@ -401,6 +440,11 @@ impl EscrowContract {
         if fill_amount > trade.total_amount - trade.filled_amount {
             return Err(ContractError::InsufficientFunds);
         }
+
+        // One active sub-escrow per (trade, buyer) — issue #294. Checked before
+        // any funds move, so a rejected duplicate fill is a pure no-op on the
+        // trade's capacity and on the buyer's balance.
+        require_no_active_fill(&env, trade_id, &buyer)?;
 
         let token_client = token::Client::new(&env, &trade.token);
         token_client.transfer(&buyer, &env.current_contract_address(), &fill_amount);
@@ -1063,6 +1107,133 @@ mod test {
         let trade = client.get_trade(&trade_id);
         assert_eq!(trade.status, TradeStatus::Locked);
         assert_eq!(trade.filled_amount, 500_0000000i128);
+    }
+
+    // -----------------------------------------------------------------------
+    // Issue #294 — one active sub-escrow per (trade, buyer)
+    // -----------------------------------------------------------------------
+
+    /// A buyer cannot stack a second active fill on the same listing: the
+    /// monopolising pattern from the issue (repeated deposits that each fit the
+    /// remaining capacity) is rejected with `DuplicateFill`.
+    #[test]
+    fn test_deposit_to_escrow_rejects_duplicate_fill_by_same_buyer() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+
+        client.deposit_to_escrow(&buyer, &trade_id, &100_0000000i128);
+
+        // Second and third fills by the same buyer while the first is active.
+        let result = client.try_deposit_to_escrow(&buyer, &trade_id, &100_0000000i128);
+        assert_eq!(result, Err(Ok(ContractError::DuplicateFill)));
+
+        let result = client.try_deposit_to_escrow(&buyer, &trade_id, &400_0000000i128);
+        assert_eq!(result, Err(Ok(ContractError::DuplicateFill)));
+
+        // The rejected attempts moved no money and consumed no capacity, so the
+        // remainder of the listing stays available to other buyers.
+        let trade = client.get_trade(&trade_id);
+        assert_eq!(trade.status, TradeStatus::PartiallyFilled);
+        assert_eq!(trade.filled_amount, 100_0000000i128);
+
+        let token_client = TokenClient::new(&env, &token);
+        assert_eq!(
+            token_client.balance(&buyer),
+            100_000_000_000i128 - 100_0000000i128
+        );
+    }
+
+    /// The limit is per buyer, not per trade: several buyers can still split a
+    /// listing, and the trade only locks once the capacity is exhausted.
+    #[test]
+    fn test_deposit_to_escrow_multi_buyer_partial_fills() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+
+        let sac = StellarAssetClient::new(&env, &token);
+        let buyer2 = Address::generate(&env);
+        let buyer3 = Address::generate(&env);
+        sac.mint(&buyer2, &200_0000000i128);
+        sac.mint(&buyer3, &200_0000000i128);
+
+        client.deposit_to_escrow(&buyer, &trade_id, &200_0000000i128);
+        client.deposit_to_escrow(&buyer2, &trade_id, &200_0000000i128);
+
+        let trade = client.get_trade(&trade_id);
+        assert_eq!(trade.status, TradeStatus::PartiallyFilled);
+        assert_eq!(trade.filled_amount, 400_0000000i128);
+
+        client.deposit_to_escrow(&buyer3, &trade_id, &100_0000000i128);
+
+        let trade = client.get_trade(&trade_id);
+        assert_eq!(trade.status, TradeStatus::Locked);
+        assert_eq!(trade.filled_amount, 500_0000000i128);
+
+        // Each buyer deposited exactly once, so all three fills are distinct
+        // and independently releasable.
+        client.release_payment(&trade_id, &1);
+        client.release_payment(&trade_id, &2);
+        client.release_payment(&trade_id, &3);
+
+        assert_eq!(client.get_trade(&trade_id).status, TradeStatus::Completed);
+        let token_client = TokenClient::new(&env, &token);
+        assert_eq!(token_client.balance(&seller), 500_0000000i128);
+    }
+
+    /// "Active" is the rule, not "has ever deposited": once a buyer's fill has
+    /// been settled they may buy into the same (still partially filled)
+    /// listing again, which opens a new sub-escrow with a new fill id.
+    #[test]
+    fn test_deposit_to_escrow_allows_refill_after_release() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("DATA"),
+            &(1_000_000 + 86_400),
+        );
+
+        client.deposit_to_escrow(&buyer, &trade_id, &200_0000000i128);
+        // Fill #1 is delivered and settled while the listing is still open.
+        client.release_payment(&trade_id, &1);
+
+        let trade = client.get_trade(&trade_id);
+        assert_eq!(trade.status, TradeStatus::PartiallyFilled);
+        assert_eq!(trade.filled_amount, 200_0000000i128);
+
+        // The buyer holds no active fill any more, so a second deposit is
+        // accepted rather than rejected as a duplicate.
+        client.deposit_to_escrow(&buyer, &trade_id, &300_0000000i128);
+
+        let trade = client.get_trade(&trade_id);
+        assert_eq!(trade.status, TradeStatus::Locked);
+        assert_eq!(trade.filled_amount, 500_0000000i128);
+
+        // The settled fill stays settled: only the new fill #2 is releasable.
+        let result = client.try_release_payment(&trade_id, &1);
+        assert_eq!(result, Err(Ok(ContractError::FillAlreadyProcessed)));
+
+        client.release_payment(&trade_id, &2);
+        assert_eq!(client.get_trade(&trade_id).status, TradeStatus::Completed);
     }
 
     #[test]
