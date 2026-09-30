@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_TRADE_STROOPS } from "@stellar-raide-stellar-raide-airflex/shared/units";
 
 /**
  * Schema for POST /api/v1/trades (create listing)
@@ -16,9 +17,27 @@ export const createTradeSchema = z.object({
       "assetType must contain only letters, numbers, underscores, or hyphens"
     ),
 
+  /**
+   * Listing amount **in stroops** — the contract's unit, converted by the
+   * caller with `toStroops()` from packages/shared (issue #292).
+   *
+   * Requiring a positive integer removes the ambiguous conversion that used to
+   * happen inside services/stellar.ts (`amount * 1_000_000`) and rejects
+   * fractional inputs that could drift by a few stroops before reaching the
+   * contract. The ceiling mirrors the sell form's ₦1,000,000 listing cap.
+   *
+   * The route persists the naira equivalent (`fromStroops`) so the
+   * naira-denominated platform ledger stays consistent; only this wire format
+   * and the escrow call are in stroops.
+   */
   amount: z
     .number({ required_error: "amount is required", invalid_type_error: "amount must be a number" })
-    .positive("amount must be greater than 0"),
+    .int("amount must be a whole number of stroops")
+    .positive("amount must be greater than 0")
+    .max(
+      Number(MAX_TRADE_STROOPS),
+      "amount must not exceed 1,000,000,000,000 stroops (₦1,000,000)"
+    ),
 
   expiresInHours: z
     .number({ required_error: "expiresInHours is required", invalid_type_error: "expiresInHours must be a number" })

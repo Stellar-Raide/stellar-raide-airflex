@@ -4,6 +4,13 @@
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./units": {
+      "types": "./units.d.ts",
+      "default": "./units.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist"
