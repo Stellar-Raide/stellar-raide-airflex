@@ -22,6 +22,7 @@ pub enum DataKey {
     AllowedToken(Address),
     TradeFillCounter(u64),
     SubEscrow(u64, u64),
+    AllowedCategory(Symbol),
 }
 
 pub const EMERGENCY_TIMELOCK_SECS: u64 = 72 * 60 * 60; // 72 hours = 259,200 seconds
@@ -91,6 +92,7 @@ pub enum ContractError {
     FillAlreadyProcessed = 13,
     NotAParty            = 14,
     PauseCooldownNotExpired = 15,
+    InvalidCategory      = 16,
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +111,9 @@ fn topic_disputed()  -> Symbol { symbol_short!("disputed")  } // 8 chars
 fn topic_contract()  -> Symbol { symbol_short!("contract")  } // 8 chars
 fn topic_paused()    -> Symbol { symbol_short!("paused")    } // 6 chars
 fn topic_unpaused()  -> Symbol { symbol_short!("unpaused")  } // 8 chars
+fn topic_token()     -> Symbol { symbol_short!("token")     } // 5 chars
+fn topic_allowed()   -> Symbol { symbol_short!("allowed")   } // 7 chars
+fn topic_removed()   -> Symbol { symbol_short!("removed")   } // 7 chars
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -166,6 +171,15 @@ impl EscrowContract {
                 .instance()
                 .set(&DataKey::AllowedToken(token.clone()), &true);
         }
+        // Seed default asset categories
+        let airtime = Symbol::new(&env, "AIRTIME");
+        let data = Symbol::new(&env, "DATA");
+        env.storage()
+            .instance()
+            .set(&DataKey::AllowedCategory(airtime), &true);
+        env.storage()
+            .instance()
+            .set(&DataKey::AllowedCategory(data), &true);
         // Bump instance TTL so it survives long-running trades
         env.storage().instance().extend_ttl(17_280, 17_280 * 30);
         Ok(())
@@ -187,8 +201,8 @@ impl EscrowContract {
             .get(&DataKey::Paused)
             .unwrap_or(false);
 
+        let now = env.ledger().timestamp();
         if !is_already_paused {
-            let now = env.ledger().timestamp();
             env.storage().instance().set(&DataKey::PausedAt, &now);
         }
 
@@ -246,6 +260,14 @@ impl EscrowContract {
             .has(&DataKey::AllowedToken(token.clone()))
         {
             return Err(ContractError::UnsupportedToken);
+        }
+
+        if !env
+            .storage()
+            .instance()
+            .has(&DataKey::AllowedCategory(asset_type.clone()))
+        {
+            return Err(ContractError::InvalidCategory);
         }
 
         if amount <= 0 {
@@ -321,6 +343,32 @@ impl EscrowContract {
 
         env.events()
             .publish((topic_token(), topic_removed()), token);
+        Ok(())
+    }
+
+    /// Adds `category` to the set of allowed asset category symbols.
+    /// Only callable by admin. Emits a `topics: ["category", "allowed"]` event.
+    pub fn add_category(env: Env, category: Symbol) -> Result<(), ContractError> {
+        let admin = get_admin(&env)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::AllowedCategory(category.clone()), &true);
+        env.events()
+            .publish((symbol_short!("category"), symbol_short!("allowed")), category);
+        Ok(())
+    }
+
+    /// Removes `category` from the set of allowed asset category symbols.
+    /// Only callable by admin. Emits a `topics: ["category", "removed"]` event.
+    pub fn remove_category(env: Env, category: Symbol) -> Result<(), ContractError> {
+        let admin = get_admin(&env)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .remove(&DataKey::AllowedCategory(category.clone()));
+        env.events()
+            .publish((symbol_short!("category"), symbol_short!("removed")), category);
         Ok(())
     }
 
@@ -1491,6 +1539,10 @@ mod test {
             "contract",
             "paused",
             "unpaused",
+            "token",
+            "allowed",
+            "removed",
+            "category",
         ];
 
         for topic in SHORT_TOPICS {
@@ -1509,10 +1561,148 @@ mod test {
         let _ = topic_contract();
         let _ = topic_paused();
         let _ = topic_unpaused();
+        let _ = topic_token();
+        let _ = topic_allowed();
+        let _ = topic_removed();
 
         // Verify that longer/new topics (> 9 chars, e.g. "emergency_withdrawal") work with Symbol::new(&env, ...)
         let long_topic = Symbol::new(&env, "emergency_withdrawal");
         assert_eq!(long_topic, Symbol::new(&env, "emergency_withdrawal"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Category validation tests
+    // -----------------------------------------------------------------------
+
+    /// Default categories (AIRTIME, DATA) seeded at initialize are accepted.
+    #[test]
+    fn test_default_categories_accepted() {
+        let (env, client, _admin, seller, _buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+        assert_eq!(trade_id, 1);
+
+        let trade_id2 = client.create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &symbol_short!("DATA"),
+            &(1_000_000 + 86_400),
+        );
+        assert_eq!(trade_id2, 2);
+    }
+
+    /// An unknown category symbol is rejected with InvalidCategory.
+    #[test]
+    fn test_err_invalid_category_unknown_symbol() {
+        let (env, client, _admin, seller, _buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let result = client.try_create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &symbol_short!("GIFT"),
+            &(1_000_000 + 86_400),
+        );
+        assert_eq!(result, Ok(Err(ContractError::InvalidCategory)));
+    }
+
+    /// Admin can add a new category; listings using it are then accepted.
+    #[test]
+    fn test_admin_add_category_then_listing_succeeds() {
+        let (env, client, admin, seller, _buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        // "ELEC" (electricity voucher) is not seeded by default — should fail first.
+        let result_before = client.try_create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &symbol_short!("ELEC"),
+            &(1_000_000 + 86_400),
+        );
+        assert_eq!(result_before, Ok(Err(ContractError::InvalidCategory)));
+
+        // Admin adds the category.
+        client.add_category(&symbol_short!("ELEC"));
+
+        // Now the listing should succeed.
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &symbol_short!("ELEC"),
+            &(1_000_000 + 86_400),
+        );
+        assert_eq!(trade_id, 1);
+        assert_eq!(client.get_trade(&trade_id).asset_type, symbol_short!("ELEC"));
+    }
+
+    /// Admin can remove a category; listings using it are then rejected.
+    #[test]
+    fn test_admin_remove_category_then_listing_fails() {
+        let (env, client, admin, seller, _buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        // AIRTIME is seeded by default — listing works before removal.
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+        assert_eq!(trade_id, 1);
+
+        // Admin removes AIRTIME from allowed categories.
+        client.remove_category(&symbol_short!("AIRTIME"));
+
+        // Subsequent listing with AIRTIME should now fail.
+        let result = client.try_create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+        assert_eq!(result, Ok(Err(ContractError::InvalidCategory)));
+    }
+
+    /// Non-admin cannot call add_category.
+    #[test]
+    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+    fn test_err_non_admin_cannot_add_category() {
+        let (env, client, _admin, seller, _buyer, _token) = setup();
+
+        // Attempt add_category as the seller (not admin)
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &seller,
+            invoke: &client.mock_invoke(&client.add_category, (&symbol_short!("GIFT"),)),
+        }]);
+
+        client.add_category(&symbol_short!("GIFT"));
+    }
+
+    /// Non-admin cannot call remove_category.
+    #[test]
+    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+    fn test_err_non_admin_cannot_remove_category() {
+        let (env, client, _admin, seller, _buyer, _token) = setup();
+
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &seller,
+            invoke: &client.mock_invoke(&client.remove_category, (&symbol_short!("DATA"),)),
+        }]);
+
+        client.remove_category(&symbol_short!("DATA"));
     }
 }
 
