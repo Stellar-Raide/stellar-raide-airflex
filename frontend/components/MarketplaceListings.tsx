@@ -5,6 +5,7 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { TradeOffer } from "../../server/src/types/trade";
 import { Card } from "./ui/Card";
+import ErrorBoundary from "./ErrorBoundary";
 
 interface TradesResponse {
   data: TradeOffer[];
@@ -355,17 +356,19 @@ export default function MarketplaceListings({
       </div>
 
       {/* Grid */}
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {loading ? (
-          <div className="col-span-full py-16 text-center text-gray-500">
-            Updating listings…
-          </div>
-        ) : trades.length === 0 ? (
-          <EmptyState t={t} hasActiveFilters={hasActiveFilters} onClear={handleClearFilters} />
-        ) : (
-          trades.map((trade) => <TradeCard key={trade.id} trade={trade} t={t} />)
-        )}
-      </div>
+      <ErrorBoundary context={{ section: "MarketplaceListings.grid" }}>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {loading ? (
+            <div className="col-span-full py-16 text-center text-gray-500">
+              Updating listings…
+            </div>
+          ) : trades.length === 0 ? (
+            <EmptyState t={t} hasActiveFilters={hasActiveFilters} onClear={handleClearFilters} />
+          ) : (
+            trades.map((trade) => <TradeCard key={trade.id} trade={trade} t={t} />)
+          )}
+        </div>
+      </ErrorBoundary>
 
       {pagination.totalPages > 1 && (
         <p className="mt-10 text-center text-sm text-gray-400 dark:text-gray-500">
