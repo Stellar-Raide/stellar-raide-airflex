@@ -31,6 +31,30 @@ next integer, because deployed callers decode by discriminant.
 | `15` | `PauseCooldownNotExpired` | `unpause` was called before the 5-minute pause cooldown elapsed. | Escrow |
 | `16` | `DuplicateFill` | The buyer already holds an active (unreleased, unrefunded) sub-escrow on this trade — one active fill per buyer per trade (issue #294). | Escrow |
 
+## Escrow Contract — Canonical Error Code Table
+
+The escrow contract (`contracts/escrow/src/lib.rs`) uses stable integer discriminants.
+New codes are always appended; existing values are never changed.
+
+| Discriminant | Variant name | Description |
+|---|---|---|
+| `1` | `AlreadyInitialized` | Contract already initialized. |
+| `2` | `Unauthorized` | Caller lacks required authority. |
+| `3` | `TradeNotFound` | Trade ID not found in persistent storage. |
+| `4` | `WrongStatus` | State transition is invalid for current status. |
+| `5` | `TradeExpired` | Trade has passed its expiry timestamp. |
+| `6` | `InsufficientFunds` | Amount exceeds available or escrowed balance. |
+| `7` | `InvalidExpiry` | Expiry is in the past or otherwise invalid. |
+| `8` | `AlreadyDisputed` | Trade already has an active dispute. |
+| `9` | `ContractPaused` | Contract is paused; state-mutating calls are blocked. |
+| `10` | `TimelockNotExpired` | Required timelock period has not elapsed. |
+| `11` | `UnsupportedToken` | Token address is not on the allowed tokens list. |
+| `12` | `InvalidAmount` | Amount is zero or negative. |
+| `13` | `FillAlreadyProcessed` | Sub-escrow fill has already been released or refunded. |
+| `14` | `NotAParty` | Caller is not the seller or any buyer on this trade. |
+| `15` | `PauseCooldownNotExpired` | Pause cooldown window has not elapsed before unpause. |
+| `16` | `InvalidCategory` | `asset_type` symbol is not on the admin-managed allowed categories list. |
+
 ## Handling Errors
 
 When calling contract functions via Soroban SDK or RPC:
