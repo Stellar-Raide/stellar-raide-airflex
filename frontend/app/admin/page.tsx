@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../hooks/useAuth";
+import { ApiError, apiFetch } from "../../lib/apiFetch";
 import { Button } from "../../components/ui/Button";
 import { Badge } from "../../components/ui/Badge";
 import { Card } from "../../components/ui/Card";
@@ -80,45 +81,44 @@ export default function AdminDashboardPage(): JSX.Element {
   const [lookup, setLookup] = useState<UserLookup | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
 
-  const authHeaders = useCallback(
-    (): HeadersInit => ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token ?? ""}`,
-    }),
-    [token]
-  );
-
   const loadDashboard = useCallback(async () => {
     if (!token) return;
     setLoadError(null);
 
     try {
-      const [metricsRes, tradesRes, flaggedRes] = await Promise.all([
-        fetch("/api/v1/admin/metrics", { headers: authHeaders() }),
-        fetch("/api/v1/admin/trades?status=disputed", { headers: authHeaders() }),
-        fetch("/api/v1/admin/flagged-accounts", { headers: authHeaders() }),
+      const [metricsResult, tradesResult, flaggedResult] = await Promise.allSettled([
+        apiFetch<Metrics>("/api/v1/admin/metrics"),
+        apiFetch<{ trades?: DisputedTrade[] }>("/api/v1/admin/trades?status=disputed"),
+        apiFetch<{ flaggedAccounts?: FlaggedAccount[] }>("/api/v1/admin/flagged-accounts"),
       ]);
 
-      if (metricsRes.status === 403 || tradesRes.status === 403) {
+      if ([metricsResult, tradesResult].some(
+        (result) => result.status === "rejected" &&
+          result.reason instanceof ApiError && result.reason.status === 403
+      )) {
         setLoadError("Your account does not have admin access.");
         return;
       }
 
-      if (metricsRes.ok) {
-        setMetrics((await metricsRes.json()) as Metrics);
+      if (metricsResult.status === "fulfilled") {
+        setMetrics(metricsResult.value);
+      } else if (!(metricsResult.reason instanceof ApiError)) {
+        setLoadError("Could not reach the server.");
       }
-      if (tradesRes.ok) {
-        const body = (await tradesRes.json()) as { trades?: DisputedTrade[] };
-        setDisputed(body.trades || []);
+      if (tradesResult.status === "fulfilled") {
+        setDisputed(tradesResult.value.trades || []);
+      } else if (!(tradesResult.reason instanceof ApiError)) {
+        setLoadError("Could not reach the server.");
       }
-      if (flaggedRes.ok) {
-        const body = (await flaggedRes.json()) as { flaggedAccounts?: FlaggedAccount[] };
-        setFlaggedAccounts(body.flaggedAccounts || []);
+      if (flaggedResult.status === "fulfilled") {
+        setFlaggedAccounts(flaggedResult.value.flaggedAccounts || []);
+      } else if (!(flaggedResult.reason instanceof ApiError)) {
+        setLoadError("Could not reach the server.");
       }
     } catch {
       setLoadError("Could not reach the server.");
     }
-  }, [token, authHeaders]);
+  }, [token]);
 
   useEffect(() => {
     void loadDashboard();
@@ -130,29 +130,23 @@ export default function AdminDashboardPage(): JSX.Element {
     setResolveError(null);
 
     try {
-      const res = await fetch(`/api/v1/admin/trades/${resolving.id}/resolve`, {
+      await apiFetch(`/api/v1/admin/trades/${resolving.id}/resolve`, {
         method: "POST",
-        headers: authHeaders(),
         body: JSON.stringify({ resolution }),
       });
 
-      if (res.status === 409) {
-        // Another admin got there first. Reload rather than leaving a stale
-        // row on screen that would invite a second attempt.
-        setResolveError("This trade is no longer disputed — someone else resolved it.");
-        await loadDashboard();
-        return;
-      }
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setResolveError(body.error ?? "Failed to resolve the trade.");
-        return;
-      }
-
       setResolving(null);
       await loadDashboard();
-    } catch {
-      setResolveError("Could not reach the server.");
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setResolveError("This trade is no longer disputed — someone else resolved it.");
+        await loadDashboard();
+      } else if (error instanceof ApiError) {
+        const data = error.data as { error?: string } | undefined;
+        setResolveError(data?.error ?? "Failed to resolve the trade.");
+      } else {
+        setResolveError("Could not reach the server.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -164,23 +158,18 @@ export default function AdminDashboardPage(): JSX.Element {
     setLookup(null);
 
     try {
-      const res = await fetch(
-        `/api/v1/admin/users?phone=${encodeURIComponent(phoneQuery.trim())}`,
-        { headers: authHeaders() }
+      const data = await apiFetch<UserLookup>(
+        `/api/v1/admin/users?phone=${encodeURIComponent(phoneQuery.trim())}`
       );
-
-      if (res.status === 404) {
+      setLookup(data);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
         setLookupError("No user with that phone number.");
-        return;
-      }
-      if (!res.ok) {
+      } else if (error instanceof ApiError) {
         setLookupError("Lookup failed.");
-        return;
+      } else {
+        setLookupError("Could not reach the server.");
       }
-
-      setLookup((await res.json()) as UserLookup);
-    } catch {
-      setLookupError("Could not reach the server.");
     }
   }
 
