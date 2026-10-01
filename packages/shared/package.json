@@ -6,9 +6,9 @@
   "types": "./index.ts",
   "exports": {
     ".": "./index.ts",
-    "./units": {
-      "types": "./units.d.ts",
-      "default": "./units.js"
+    "./phone": {
+      "types": "./phone.d.ts",
+      "default": "./phone.js"
     }
   },
   "scripts": {
