@@ -115,6 +115,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  useEffect(() => {
+    const onSessionExpired = () =>
+      push("error", "Your session has expired — please log in again", 0);
+    window.addEventListener("stellar-raide-stellar-raide-airflex:session-expired", onSessionExpired);
+    return () => window.removeEventListener("stellar-raide-stellar-raide-airflex:session-expired", onSessionExpired);
+  }, [push]);
+
   const value = useMemo<ToastContextValue>(
     () => ({
       success: (message, duration) => push("success", message, duration),
