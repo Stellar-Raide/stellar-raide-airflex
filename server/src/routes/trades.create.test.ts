@@ -213,4 +213,30 @@ describe("POST /api/v1/trades — explicit stroop handling (issue #292)", () => 
     expect(res.status).toBe(422);
     expect(mockCreateListing).not.toHaveBeenCalled();
   });
+
+  it("returns cached response on duplicate request with same Idempotency-Key without repeating contract call", async () => {
+    wireCreate();
+
+    const key = "test-idem-trade-key-999";
+
+    const res1 = await request(app)
+      .post("/api/v1/trades")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .set("Idempotency-Key", key)
+      .send({ assetType: "MTN_AIRTIME", amount: 500_000_000, expiresInHours: 24 });
+
+    expect(res1.status).toBe(201);
+    expect(mockCreateListing).toHaveBeenCalledTimes(1);
+
+    // Second request with the same idempotency key — should return cached 201 without calling createListing
+    const res2 = await request(app)
+      .post("/api/v1/trades")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .set("Idempotency-Key", key)
+      .send({ assetType: "MTN_AIRTIME", amount: 500_000_000, expiresInHours: 24 });
+
+    expect(res2.status).toBe(201);
+    expect(res2.body).toEqual(res1.body);
+    expect(mockCreateListing).toHaveBeenCalledTimes(1);
+  });
 });

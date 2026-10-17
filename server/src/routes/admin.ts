@@ -14,9 +14,11 @@
  */
 
 import { Router } from "express";
+import { createHash } from "crypto";
 import { authenticate } from "../middleware/authenticate";
 import { authorize } from "../middleware/authorize";
 import { validate } from "../middleware/validate";
+import { normalizePhone, maskPhone } from "../utils/phone";
 import { QueueService } from "../jobs";
 import { SseEmitter } from "../services/sseEmitter";
 import pool from "../db";
@@ -368,6 +370,7 @@ router.get(
   authorize("admin"),
   async (req, res) => {
     const { phone } = req.params;
+    const normalizedPhone = normalizePhone(phone);
 
     const { rows: userRows } = await pool.query<{
       id: string;
@@ -391,7 +394,7 @@ router.get(
        FROM users u
        WHERE u.phone = $1
        LIMIT 1`,
-      [phone]
+      [normalizedPhone]
     );
 
     if (!userRows.length) {
@@ -408,10 +411,16 @@ router.get(
       [user.id]
     );
 
+    const phoneHash = createHash("sha256")
+      .update(user.phone)
+      .digest("hex")
+      .slice(0, 8);
+
     res.status(200).json({
       data: {
         id: user.id,
-        phone: user.phone,
+        maskedPhone: maskPhone(user.phone),
+        phoneHash,
         role: user.role,
         registrationDate: user.created_at,
         stellarPublicKey: user.stellar_public_key,

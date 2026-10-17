@@ -8,9 +8,10 @@ import {
   RECOVERY_WINDOW_MINUTES,
 } from "../middleware/rateLimitRecovery";
 import { v4 as uuidv4 } from "uuid";
-import { randomInt } from "crypto";
+import { randomInt, createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import pool from "../db";
+import { cache } from "../services/cache";
 import { generateAndFundWallet } from "../services/stellar";
 import { validate } from "../middleware/validate";
 import {
@@ -410,6 +411,13 @@ router.post(
       return;
     }
 
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const isRevoked = await cache.get(`revoked_recovery_token:${tokenHash}`);
+    if (isRevoked) {
+      res.status(401).json({ error: "Recovery token is invalid or expired" });
+      return;
+    }
+
     const userId = payload.sub;
 
     // The new phone must not belong to another account.
@@ -434,31 +442,29 @@ router.post(
       return;
     }
 
+    // Update phone number and bump token version
     await pool.query(
-      `UPDATE users SET phone = $1, updated_at = NOW() WHERE id = $2`,
+      `UPDATE users SET phone = $1, token_version = token_version + 1, updated_at = NOW() WHERE id = $2`,
       [newPhone, userId]
     );
 
-    // Issue a normal session JWT so the user is signed in immediately.
-    const { rows: keyRows } = await pool.query<{
-      stellar_public_key: string | null;
-      token_version: number;
-    }>(
-      `SELECT stellar_public_key, token_version FROM users WHERE id = $1 LIMIT 1`,
-      [userId]
-    );
-    const stellarPublicKey = keyRows[0]?.stellar_public_key ?? "";
-    const tokenVersion = keyRows[0]?.token_version ?? 1;
+    // Invalidate the recovery token immediately so it cannot be reused
+    await cache.set(`revoked_recovery_token:${tokenHash}`, "1", 15 * 60);
 
-    const sessionToken = jwt.sign(
-      { sub: userId, stellarPublicKey, tokenVersion },
-      secret,
-      { expiresIn: "7d" }
-    );
+    // Send OTP to new phone number to verify ownership
+    try {
+      await sendOtp(newPhone, "");
+    } catch (err) {
+      console.error("[auth] Failed to send OTP to new phone:", (err as Error).message);
+      res.status(502).json({ error: "Failed to send OTP to new phone. Please try again." });
+      return;
+    }
 
+    // Do NOT issue a session JWT yet — the user must complete OTP verification for the new number
     res.status(200).json({
-      token: sessionToken,
-      user: { id: userId, phone: newPhone, stellarPublicKey },
+      message: "Phone number updated. Please verify your new phone number with the OTP sent to complete sign-in.",
+      phone: newPhone,
+      requiresVerification: true,
     });
   }
 );
