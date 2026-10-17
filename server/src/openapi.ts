@@ -852,8 +852,9 @@ export const openApiDocument = {
         summary: "Register a new phone number after recovery",
         description:
           "Presents the one-time recovery token from POST /api/v1/auth/recover " +
-          "and moves the account to a new phone number (issue #108). Returns a " +
-          "fresh session JWT so the user is signed in immediately.",
+          "and moves the account to a new phone number. Sends an OTP to the new phone " +
+          "number and prompts the user to verify ownership via POST /api/v1/auth/verify-otp " +
+          "before a session JWT is issued.",
         security: [],
         requestBody: {
           required: true,
@@ -865,10 +866,17 @@ export const openApiDocument = {
         },
         responses: {
           "200": {
-            description: "Phone number updated — session JWT issued.",
+            description: "Phone number updated — verification prompt returned.",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/AuthTokenResponse" },
+                schema: {
+                  type: "object",
+                  properties: {
+                    message: { type: "string" },
+                    phone: { type: "string" },
+                    requiresVerification: { type: "boolean" },
+                  },
+                },
               },
             },
           },
@@ -963,6 +971,15 @@ export const openApiDocument = {
           "Creates a new trade listing. Calls `create_listing` on the Soroban escrow contract " +
           "and stores the resulting on-chain listing ID.",
         security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "Idempotency-Key",
+            in: "header",
+            required: false,
+            description: "Optional idempotency key to prevent duplicate listing creation on retry.",
+            schema: { type: "string" },
+          },
+        ],
         requestBody: {
           required: true,
           content: {

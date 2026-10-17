@@ -76,6 +76,12 @@ export function validateEnv(
     }
   }
 
+  if (env["NODE_ENV"] === "production" && !env["REDIS_URL"]) {
+    errors.push(
+      "[startup] REDIS_URL is required in production to ensure rate limiting and velocity checks persist across restarts and replicas"
+    );
+  }
+
   return {
     valid: errors.length === 0,
     missingRequired,
