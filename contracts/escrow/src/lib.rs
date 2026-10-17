@@ -26,6 +26,7 @@ pub enum DataKey {
 }
 
 pub const EMERGENCY_TIMELOCK_SECS: u64 = 72 * 60 * 60; // 72 hours = 259,200 seconds
+pub const MAX_EXPIRY_SECS: u64 = 30 * 24 * 60 * 60; // 30 days = 2,592,000 seconds
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,6 +94,7 @@ pub enum ContractError {
     NotAParty = 14,
     PauseCooldownNotExpired = 15,
     InvalidCategory      = 16,
+    DuplicateFill        = 17,
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +138,15 @@ fn topic_allowed() -> Symbol {
 fn topic_removed() -> Symbol {
     symbol_short!("removed")
 } // 7 chars
+fn topic_released() -> Symbol {
+    symbol_short!("released")
+} // 8 chars
+fn topic_admin() -> Symbol {
+    symbol_short!("admin")
+} // 5 chars
+fn topic_transfer() -> Symbol {
+    symbol_short!("transfer")
+} // 8 chars
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -330,7 +341,7 @@ impl EscrowContract {
         }
 
         let now = env.ledger().timestamp();
-        if expires_at <= now {
+        if expires_at <= now || expires_at > now + MAX_EXPIRY_SECS {
             return Err(ContractError::InvalidExpiry);
         }
 
@@ -422,6 +433,20 @@ impl EscrowContract {
             .remove(&DataKey::AllowedCategory(category.clone()));
         env.events()
             .publish((symbol_short!("category"), symbol_short!("removed")), category);
+        Ok(())
+    }
+
+    /// Transfers admin ownership to a new address.
+    /// Only callable by the current admin.
+    /// Emits a `topics: ["admin", "transfer"]` event with `(old_admin, new_admin)`.
+    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), ContractError> {
+        let admin = get_admin(&env)?;
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        env.events()
+            .publish((topic_admin(), topic_transfer()), (admin, new_admin));
         Ok(())
     }
 
@@ -575,6 +600,7 @@ impl EscrowContract {
             .persistent()
             .set(&DataKey::SubEscrow(trade_id, fill_id), &sub_escrow);
 
+        let mut completed = false;
         if trade.filled_amount == trade.total_amount {
             let fill_count = env
                 .storage()
@@ -599,11 +625,17 @@ impl EscrowContract {
                 env.storage()
                     .persistent()
                     .set(&DataKey::Trade(trade_id), &trade);
+                completed = true;
             }
         }
 
         env.events()
-            .publish((topic_completed(),), (trade_id, trade.seller.clone()));
+            .publish((topic_released(),), (trade_id, fill_id, trade.seller.clone()));
+
+        if completed {
+            env.events()
+                .publish((topic_completed(),), (trade_id, trade.seller.clone()));
+        }
         Ok(())
     }
 
@@ -909,7 +941,7 @@ impl EscrowContract {
 mod test {
     use super::*;
     use soroban_sdk::{
-        testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
+        testutils::{Address as _, Events as _, Ledger, MockAuth, MockAuthInvoke},
         token::{Client as TokenClient, StellarAssetClient},
         vec, Address, Env, IntoVal,
     };
@@ -1720,6 +1752,9 @@ mod test {
             "allowed",
             "removed",
             "category",
+            "released",
+            "admin",
+            "transfer",
         ];
 
         for topic in SHORT_TOPICS {
@@ -1741,6 +1776,9 @@ mod test {
         let _ = topic_token();
         let _ = topic_allowed();
         let _ = topic_removed();
+        let _ = topic_released();
+        let _ = topic_admin();
+        let _ = topic_transfer();
 
         // Verify that longer/new topics (> 9 chars, e.g. "emergency_withdrawal") work with Symbol::new(&env, ...)
         let long_topic = Symbol::new(&env, "emergency_withdrawal");
@@ -1789,13 +1827,13 @@ mod test {
             &symbol_short!("GIFT"),
             &(1_000_000 + 86_400),
         );
-        assert_eq!(result, Ok(Err(ContractError::InvalidCategory)));
+        assert_eq!(result, Err(Ok(ContractError::InvalidCategory)));
     }
 
     /// Admin can add a new category; listings using it are then accepted.
     #[test]
     fn test_admin_add_category_then_listing_succeeds() {
-        let (env, client, admin, seller, _buyer, token) = setup();
+        let (env, client, _admin, seller, _buyer, token) = setup();
         env.ledger().with_mut(|l| l.timestamp = 1_000_000);
 
         // "ELEC" (electricity voucher) is not seeded by default — should fail first.
@@ -1806,7 +1844,7 @@ mod test {
             &symbol_short!("ELEC"),
             &(1_000_000 + 86_400),
         );
-        assert_eq!(result_before, Ok(Err(ContractError::InvalidCategory)));
+        assert_eq!(result_before, Err(Ok(ContractError::InvalidCategory)));
 
         // Admin adds the category.
         client.add_category(&symbol_short!("ELEC"));
@@ -1826,7 +1864,7 @@ mod test {
     /// Admin can remove a category; listings using it are then rejected.
     #[test]
     fn test_admin_remove_category_then_listing_fails() {
-        let (env, client, admin, seller, _buyer, token) = setup();
+        let (env, client, _admin, seller, _buyer, token) = setup();
         env.ledger().with_mut(|l| l.timestamp = 1_000_000);
 
         // AIRTIME is seeded by default — listing works before removal.
@@ -1850,21 +1888,16 @@ mod test {
             &symbol_short!("AIRTIME"),
             &(1_000_000 + 86_400),
         );
-        assert_eq!(result, Ok(Err(ContractError::InvalidCategory)));
+        assert_eq!(result, Err(Ok(ContractError::InvalidCategory)));
     }
 
     /// Non-admin cannot call add_category.
     #[test]
     #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
     fn test_err_non_admin_cannot_add_category() {
-        let (env, client, _admin, seller, _buyer, _token) = setup();
+        let (env, client, _admin, _seller, _buyer, _token) = setup();
 
-        // Attempt add_category as the seller (not admin)
-        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
-            address: &seller,
-            invoke: &client.mock_invoke(&client.add_category, (&symbol_short!("GIFT"),)),
-        }]);
-
+        env.set_auths(&[]);
         client.add_category(&symbol_short!("GIFT"));
     }
 
@@ -1872,14 +1905,107 @@ mod test {
     #[test]
     #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
     fn test_err_non_admin_cannot_remove_category() {
-        let (env, client, _admin, seller, _buyer, _token) = setup();
+        let (env, client, _admin, _seller, _buyer, _token) = setup();
 
-        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
-            address: &seller,
-            invoke: &client.mock_invoke(&client.remove_category, (&symbol_short!("DATA"),)),
-        }]);
-
+        env.set_auths(&[]);
         client.remove_category(&symbol_short!("DATA"));
+    }
+
+    #[test]
+    fn test_create_listing_max_expiry_window() {
+        let (env, client, _admin, seller, _buyer, token) = setup();
+        let now = 1_000_000u64;
+        env.ledger().with_mut(|l| l.timestamp = now);
+
+        // Exceeds max expiry window
+        let result = client.try_create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(now + MAX_EXPIRY_SECS + 1),
+        );
+        assert_eq!(result, Err(Ok(ContractError::InvalidExpiry)));
+
+        // At exact max expiry window -> succeeds
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(now + MAX_EXPIRY_SECS),
+        );
+        assert_eq!(trade_id, 1);
+    }
+
+    #[test]
+    fn test_transfer_admin_authorized_and_functional() {
+        let (env, client, admin, _seller, _buyer, _token) = setup();
+        assert_eq!(client.get_admin(), admin);
+
+        let new_admin = Address::generate(&env);
+        client.transfer_admin(&new_admin);
+        assert_eq!(client.get_admin(), new_admin);
+
+        // Verify new admin can perform admin-only operation (pause)
+        client.pause();
+        assert!(client.is_paused());
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+    fn test_err_transfer_admin_unauthorized() {
+        let (env, client, _admin, _seller, _buyer, _token) = setup();
+        let new_admin = Address::generate(&env);
+
+        env.set_auths(&[]);
+        client.transfer_admin(&new_admin);
+    }
+
+    #[test]
+    fn test_release_payment_event_topics_partial_and_completed() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("DATA"),
+            &(1_000_000 + 86_400),
+        );
+
+        // First deposit: partial fill (200 out of 500)
+        client.deposit_to_escrow(&buyer, &trade_id, &200_0000000i128);
+
+        // Release first fill
+        client.release_payment(&trade_id, &1);
+
+        // Check events after partial release: topic "released" is present, but "completed" is NOT
+        let all_events = env.events().all();
+        let released_symbol = symbol_short!("released");
+        let completed_symbol = symbol_short!("completed");
+
+        let has_released = all_events.iter().any(|e| {
+            e.1.iter().any(|t| t == released_symbol.to_val())
+        });
+        let has_completed = all_events.iter().any(|e| {
+            e.1.iter().any(|t| t == completed_symbol.to_val())
+        });
+
+        assert!(has_released, "Event topic 'released' should be published");
+        assert!(!has_completed, "Event topic 'completed' should NOT be published on partial release");
+
+        // Second deposit: completes remaining 300
+        client.deposit_to_escrow(&buyer, &trade_id, &300_0000000i128);
+        client.release_payment(&trade_id, &2);
+
+        // Check events after final release: now "completed" MUST be present
+        let all_events_after = env.events().all();
+        let has_completed_final = all_events_after.iter().any(|e| {
+            e.1.iter().any(|t| t == completed_symbol.to_val())
+        });
+        assert!(has_completed_final, "Event topic 'completed' should be published on trade completion");
     }
 }
 
