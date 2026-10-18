@@ -8,7 +8,7 @@ import {
   RECOVERY_WINDOW_MINUTES,
 } from "../middleware/rateLimitRecovery";
 import { v4 as uuidv4 } from "uuid";
-import { randomInt, createHash } from "crypto";
+import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import pool from "../db";
 import { cache } from "../services/cache";
@@ -37,7 +37,7 @@ import { generateDisplayHandle } from "../utils/displayHandle";
 const router = Router();
 
 function newReferralCode(): string {
-  return createReferralCode(() => randomInt(0, 32) / 32);
+  return createReferralCode();
 }
 
 /** Send OTP via Termii SMS API */
