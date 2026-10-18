@@ -438,7 +438,7 @@ export const openApiDocument = {
               },
               referralCode: {
                 type: "string",
-                example: "ABC12345",
+                example: "K7QM2XWTHN4PZR8C",
               },
             },
           },
