@@ -772,6 +772,12 @@ impl EscrowContract {
     // flag_dispute
     // -----------------------------------------------------------------------
 
+    /// Escalates a fully-filled (`Locked`) trade to `Disputed`.
+    ///
+    /// `PartiallyFilled` trades are rejected with `WrongStatus`: delivery is
+    /// only attempted once a trade is locked, so a buyer who deposited a
+    /// single stroop has no delivery grievance yet and must not be able to
+    /// freeze the seller's listing.
     pub fn flag_dispute(env: Env, caller: Address, trade_id: u64) -> Result<(), ContractError> {
         require_not_paused(&env)?;
         caller.require_auth();
@@ -786,7 +792,7 @@ impl EscrowContract {
             return Err(ContractError::AlreadyDisputed);
         }
 
-        if trade.status != TradeStatus::Locked && trade.status != TradeStatus::PartiallyFilled {
+        if trade.status != TradeStatus::Locked {
             return Err(ContractError::WrongStatus);
         }
 
@@ -2261,5 +2267,76 @@ mod fuzz {
         let recipient = Address::generate(&env);
         let result = client.try_emergency_withdraw(&token, &recipient, &500_0000000i128);
         assert_eq!(result, Err(Ok(ContractError::WrongStatus)));
+    }
+
+    // -----------------------------------------------------------------------
+    // flag_dispute status restriction (#240)
+    // -----------------------------------------------------------------------
+
+    fn partially_filled_trade(
+        env: &Env,
+        client: &EscrowContractClient<'static>,
+        seller: &Address,
+        buyer: &Address,
+        token: &Address,
+    ) -> u64 {
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+        let trade_id = client.create_listing(
+            seller,
+            token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+        client.deposit_to_escrow(buyer, &trade_id, &1i128);
+        assert_eq!(client.get_trade(&trade_id).status, TradeStatus::PartiallyFilled);
+        trade_id
+    }
+
+    #[test]
+    fn test_err_buyer_cannot_dispute_partially_filled_trade() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        let trade_id = partially_filled_trade(&env, &client, &seller, &buyer, &token);
+
+        let result = client.try_flag_dispute(&buyer, &trade_id);
+        assert_eq!(result, Err(Ok(ContractError::WrongStatus)));
+        assert_eq!(client.get_trade(&trade_id).status, TradeStatus::PartiallyFilled);
+    }
+
+    #[test]
+    fn test_err_seller_cannot_dispute_partially_filled_trade() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        let trade_id = partially_filled_trade(&env, &client, &seller, &buyer, &token);
+
+        let result = client.try_flag_dispute(&seller, &trade_id);
+        assert_eq!(result, Err(Ok(ContractError::WrongStatus)));
+    }
+
+    #[test]
+    fn test_err_cannot_dispute_open_trade() {
+        let (env, client, _admin, seller, _buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+
+        let result = client.try_flag_dispute(&seller, &trade_id);
+        assert_eq!(result, Err(Ok(ContractError::WrongStatus)));
+    }
+
+    #[test]
+    fn test_dispute_allowed_once_partial_fill_is_locked() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        let trade_id = partially_filled_trade(&env, &client, &seller, &buyer, &token);
+
+        client.deposit_to_escrow(&buyer, &trade_id, &(500_0000000i128 - 1));
+        assert_eq!(client.get_trade(&trade_id).status, TradeStatus::Locked);
+
+        client.flag_dispute(&buyer, &trade_id);
+        assert_eq!(client.get_trade(&trade_id).status, TradeStatus::Disputed);
     }
 }
