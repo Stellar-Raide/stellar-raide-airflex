@@ -39,6 +39,13 @@ export const NOTIFICATION_TEMPLATES = {
     "AirFlex: Your withdrawal of {amount} has been processed and will arrive " +
     "in your bank account shortly.",
 
+  /**
+   * Sent to the user when a withdrawal request fails.
+   */
+  WITHDRAWAL_FAILED:
+    "AirFlex: Your withdrawal of {amount} has failed. {reason}. " +
+    "Your wallet balance has been restored.",
+
   /** Sent to admins when a Paystack webhook permanently fails processing (#118). */
   WEBHOOK_FAILED:
     "AirFlex admin: Paystack webhook {eventId} ({eventType}) failed after retries. " +
