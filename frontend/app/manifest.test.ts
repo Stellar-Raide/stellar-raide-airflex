@@ -57,3 +57,57 @@ describe("manifest screenshots", () => {
     }
   );
 });
+
+/**
+ * PWA manifest icons, theme and display (issue #462).
+ *
+ * Lighthouse's "installable-icon" check requires a 192px (or larger) icon
+ * with a `maskable` purpose, plus a matching `theme_color`. These assertions
+ * pin both the manifest metadata and the underlying PNG files so a missing or
+ * wrong-sized icon is caught before it silently degrades the install prompt.
+ */
+describe("manifest icons and theme (#462)", () => {
+  const m = manifest();
+  const icons = m.icons ?? [];
+
+  it("declares 192x192 and 512x512 icons", () => {
+    const sizes = icons.map((i) => i.sizes);
+    expect(sizes).toContain("192x192");
+    expect(sizes).toContain("512x512");
+  });
+
+  it("includes a maskable purpose at both 192x192 and 512x512", () => {
+    const maskable192 = icons.find(
+      (i) => i.sizes === "192x192" && i.purpose?.includes("maskable"),
+    );
+    const maskable512 = icons.find(
+      (i) => i.sizes === "512x512" && i.purpose?.includes("maskable"),
+    );
+    expect(maskable192).toBeDefined();
+    expect(maskable512).toBeDefined();
+  });
+
+  it("every icon file exists on disk as a valid PNG", () => {
+    for (const icon of icons) {
+      const file = path.join(PUBLIC_DIR, icon.src.replace(/^\//, ""));
+      expect(fs.existsSync(file)).toBe(true);
+
+      const { width, height } = pngSize(file);
+      const [w, h] = (icon.sizes ?? "").split("x").map(Number);
+      expect({ width, height }).toEqual({ width: w, height: h });
+    }
+  });
+
+  it("sets theme_color and background_color matching the brand palette", () => {
+    expect(m.theme_color).toBe("#7c3aed");
+    expect(m.background_color).toBe("#f9fafb");
+  });
+
+  it('uses display "standalone" with a meaningful name and short_name', () => {
+    expect(m.display).toBe("standalone");
+    expect(m.name).toBeTruthy();
+    expect(m.short_name).toBeTruthy();
+    expect(m.name.length).toBeGreaterThan(0);
+    expect(m.short_name.length).toBeGreaterThan(0);
+  });
+});
