@@ -125,36 +125,63 @@ function maskPhone(phone: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Navbar
-// ---------------------------------------------------------------------------
+export interface NavbarProps {
+  /** Optional override for authentication state (defaults to checking localStorage auth) */
+  initialAuthed?: boolean;
+  /** Optional mock user for display (e.g. { phone: "+2348012345678" }) */
+  initialUser?: { phone?: string; id?: string } | null;
+  /** Optional mock wallet balance string (e.g. "250.00 XLM" or "₦50,000.00") */
+  initialBalance?: string | null;
+  /** Optional initial state of the mobile slide-in drawer */
+  initialDrawerOpen?: boolean;
+  /** Optional theme override passed to ThemeToggle */
+  currentTheme?: "light" | "dark";
+}
 
-export default function Navbar() {
+export default function Navbar({
+  initialAuthed,
+  initialUser,
+  initialBalance,
+  initialDrawerOpen = false,
+  currentTheme,
+}: NavbarProps = {}) {
   const pathname = usePathname();
   const t = useTranslations("Nav");
 
   // ---- auth / user state --------------------------------------------------
-  const [mounted, setMounted]         = useState(false);
-  const [authed, setAuthed]           = useState(false);
-  const [maskedPhone, setMaskedPhone] = useState<string>("");
+  const [mounted, setMounted]         = useState(
+    initialAuthed !== undefined || initialBalance !== undefined || initialDrawerOpen
+  );
+  const [authed, setAuthed]           = useState(initialAuthed ?? false);
+  const [maskedPhone, setMaskedPhone] = useState<string>(
+    initialUser?.phone ? maskPhone(initialUser.phone) : ""
+  );
 
   // ---- wallet balance -----------------------------------------------------
-  const [balance, setBalance]         = useState<string | null>(null);
+  const [balance, setBalance]         = useState<string | null>(initialBalance ?? null);
   const [balanceLoading, setBalanceLoading] = useState(false);
 
   // ---- mobile drawer ------------------------------------------------------
-  const [drawerOpen, setDrawerOpen]   = useState(false);
+  const [drawerOpen, setDrawerOpen]   = useState(initialDrawerOpen);
   const drawerRef                     = useRef<HTMLDivElement>(null);
   const hamburgerRef                  = useRef<HTMLButtonElement>(null);
 
   // ---- resolve auth on mount ----------------------------------------------
   useEffect(() => {
     setMounted(true);
+    if (initialAuthed !== undefined) {
+      setAuthed(initialAuthed);
+      if (initialUser?.phone) {
+        setMaskedPhone(maskPhone(initialUser.phone));
+      }
+      return;
+    }
     if (isAuthenticated()) {
       setAuthed(true);
       const user = getUser();
       if (user?.phone) setMaskedPhone(maskPhone(user.phone));
     }
-  }, []);
+  }, [initialAuthed, initialUser]);
 
   // ---- fetch wallet balance when authenticated ----------------------------
   const fetchBalance = useCallback(() => {
@@ -172,11 +199,17 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
+    if (initialBalance !== undefined) return;
     if (mounted && authed) fetchBalance();
-  }, [mounted, authed, fetchBalance]);
+  }, [mounted, authed, fetchBalance, initialBalance]);
 
   // ---- close drawer on route change ---------------------------------------
+  const isFirstPathname = useRef(true);
   useEffect(() => {
+    if (isFirstPathname.current) {
+      isFirstPathname.current = false;
+      return;
+    }
     setDrawerOpen(false);
   }, [pathname]);
 
@@ -324,7 +357,7 @@ export default function Navbar() {
 
             {/* Theme toggle — always visible */}
             <LanguageSwitcher />
-            <ThemeToggle />
+            <ThemeToggle currentTheme={currentTheme} />
 
             {/* Hamburger — mobile only */}
             <button

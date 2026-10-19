@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getToken } from "../../../lib/auth";
-import { ApiError, apiFetch } from "../../../lib/apiFetch";
+import { ApiError, apiFetch } from "../../../../lib/apiFetch";
 import { Button } from "../../../../components/ui/Button";
 
 export default function RateSellerPage() {

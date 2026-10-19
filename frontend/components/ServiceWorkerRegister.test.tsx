@@ -22,6 +22,10 @@ function removeServiceWorker() {
   delete (navigator as { serviceWorker?: unknown }).serviceWorker;
 }
 
+function setNodeEnv(value: string | undefined) {
+  (process.env as Record<string, string | undefined>).NODE_ENV = value;
+}
+
 describe("ServiceWorkerRegister", () => {
   let warnSpy: jest.SpyInstance;
 
@@ -32,7 +36,7 @@ describe("ServiceWorkerRegister", () => {
 
   afterEach(() => {
     warnSpy.mockRestore();
-    process.env.NODE_ENV = originalNodeEnv;
+    setNodeEnv(originalNodeEnv);
     removeServiceWorker();
   });
 
@@ -44,7 +48,7 @@ describe("ServiceWorkerRegister", () => {
   });
 
   it("warns and reports to monitoring when registration rejects", async () => {
-    process.env.NODE_ENV = "production";
+    setNodeEnv("production");
     const error = new Error("boom");
     const register = jest.fn().mockRejectedValue(error);
     setServiceWorker({ register });
@@ -66,7 +70,7 @@ describe("ServiceWorkerRegister", () => {
   });
 
   it("does not warn when registration resolves", async () => {
-    process.env.NODE_ENV = "production";
+    setNodeEnv("production");
     const register = jest.fn().mockResolvedValue({});
     setServiceWorker({ register });
 
@@ -78,7 +82,7 @@ describe("ServiceWorkerRegister", () => {
   });
 
   it("logs a development explanation when registration is skipped", () => {
-    process.env.NODE_ENV = "development";
+    setNodeEnv("development");
     setServiceWorker({ register: jest.fn() });
 
     render(<ServiceWorkerRegister />);
