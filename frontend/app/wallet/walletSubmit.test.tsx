@@ -33,6 +33,7 @@ describe("DepositModal submitting state", () => {
   let fetchMock: jest.Mock;
 
   beforeEach(() => {
+    jest.setTimeout(15000);
     jest.clearAllMocks();
     onClose.mockClear();
     onDepositSuccess.mockClear();

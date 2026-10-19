@@ -39,7 +39,7 @@ jobs:
         env:
           # Every API call is intercepted in-test; this only has to be a
           # well-formed origin for the intercepts to match against.
-          NEXT_PUBLIC_API_URL: http://localhost:3001
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:3001
 
       - name: Upload report on failure
         if: failure()

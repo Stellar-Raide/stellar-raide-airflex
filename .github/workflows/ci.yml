@@ -132,7 +132,7 @@ jobs:
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32v1-none
+          targets: wasm32v1-none, wasm32-unknown-unknown
           components: rustfmt, clippy
 
       # Cache the Cargo registry and build artifacts to speed up runs.
