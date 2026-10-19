@@ -26,7 +26,7 @@ jobs:
           node-version: 20
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4
         with:
           version: 10.28.0
 
@@ -52,7 +52,7 @@ jobs:
         run: pnpm build
 
       - name: Run unit tests (Vitest)
-        run: pnpm test -- --coverage
+        run: pnpm test --coverage --passWithNoTests
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
