@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Card } from "./ui/Card";
+import { Card } from "../../components/ui/Card";
 import { ASSET_OPTIONS, ASSET_TYPE_VALUES, formatAssetType } from "../lib/assetTypes";
 import type { AssetTypeValue } from "../lib/assetTypes";
-import { useTradeList } from "../hooks/useTradeList";
+import { useTradeList } from "../../hooks/useTradeList";
 import type { TradeOffer } from "../../../server/src/types/trade";
 
 // ---------------------------------------------------------------------------
@@ -26,8 +26,21 @@ function AssetBadge({ assetType }: { assetType: string }) {
   );
 }
 
-function TradeCard({ trade }: { trade: TradeOffer }) {
-  const sellerAlias = trade.seller_handle ?? "@stellar-raide-stellar-raide-airflex";
+interface GridTrade {
+  id: string;
+  seller_handle?: string;
+  sellerId?: string;
+  asset_type?: string;
+  assetCode?: string;
+  amount: number;
+  expires_at?: string | number | Date;
+  expiresAt?: string | number | Date;
+}
+
+function TradeCard({ trade }: { trade: GridTrade }) {
+  const sellerAlias = trade.seller_handle ?? trade.sellerId ?? "@stellar-raide-stellar-raide-airflex";
+  const assetType = trade.asset_type ?? trade.assetCode ?? "AIRTIME";
+  const expires = trade.expires_at ?? trade.expiresAt ?? new Date();
   return (
     <Card className="flex flex-col gap-4 transition-shadow hover:shadow-md">
       <div className="flex items-start justify-between gap-2">
@@ -37,7 +50,7 @@ function TradeCard({ trade }: { trade: TradeOffer }) {
             {sellerAlias}
           </p>
         </div>
-        <AssetBadge assetType={trade.asset_type} />
+        <AssetBadge assetType={assetType} />
       </div>
 
       <div className="flex flex-col gap-0.5">
@@ -51,7 +64,7 @@ function TradeCard({ trade }: { trade: TradeOffer }) {
 
       <p className="text-xs text-gray-400 dark:text-gray-500">
         Expires{" "}
-        {new Date(trade.expires_at).toLocaleDateString("en-NG", {
+        {new Date(expires).toLocaleDateString("en-NG", {
           day: "numeric",
           month: "short",
           year: "numeric",
@@ -63,7 +76,7 @@ function TradeCard({ trade }: { trade: TradeOffer }) {
       <a
         href={`/trades/${trade.id}`}
         className="mt-auto inline-flex items-center justify-center rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
-        aria-label={`View and buy ${formatAssetType(trade.asset_type)} — ₦${trade.amount.toLocaleString()} from ${sellerAlias}`}
+        aria-label={`View and buy ${formatAssetType(assetType)} — ₦${trade.amount.toLocaleString()} from ${sellerAlias}`}
       >
         View &amp; Buy
       </a>
@@ -224,7 +237,7 @@ export default function ListingsGrid() {
           {trades.length === 0 ? (
             <EmptyState filtered={activeFilter !== "ALL"} />
           ) : (
-            trades.map((trade) => <TradeCard key={trade.id} trade={trade} />)
+            trades.map((trade) => <TradeCard key={trade.id} trade={trade as unknown as GridTrade} />)
           )}
         </div>
       )}

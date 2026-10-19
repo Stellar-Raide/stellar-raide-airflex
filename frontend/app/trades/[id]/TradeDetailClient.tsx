@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import type { TradeOffer } from "../../../../server/src/types/trade";
 import { getToken, getUser, isAuthenticated } from "../../lib/auth";
-import { ApiError, apiFetch } from "../../lib/apiFetch";
+import { ApiError, apiFetch } from "../../../lib/apiFetch";
 import {
   AccountMismatchError,
   SessionKeyMissingError,

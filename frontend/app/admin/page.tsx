@@ -24,6 +24,7 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Modal } from "../../components/ui/Modal";
 import { StellarExplorerLink } from "../../components/StellarExplorerLink";
+import { AuthGuard } from "../components/AuthGuard";
 
 interface Metrics {
   totalUsers: number;
