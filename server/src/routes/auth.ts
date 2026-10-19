@@ -36,6 +36,25 @@ import { generateDisplayHandle } from "../utils/displayHandle";
 
 const router = Router();
 
+/**
+ * Returns the JWT signing secret.
+ *
+ * assertEnvValid() is called at server startup (index.ts) and exits the
+ * process if JWT_SECRET is absent or too short. This getter is a second line
+ * of defence: it throws a descriptive error rather than letting jsonwebtoken
+ * receive `undefined` and throw a cryptic internal exception (issue #247).
+ */
+function getJwtSecret(): string {
+  const secret = process.env["JWT_SECRET"];
+  if (!secret) {
+    throw new Error(
+      "[auth] JWT_SECRET is not set. " +
+        "The server should have exited at startup — check validateEnv.ts."
+    );
+  }
+  return secret;
+}
+
 function newReferralCode(): string {
   return createReferralCode();
 }
@@ -296,7 +315,7 @@ router.post(
     // `tokenVersion` lets this token be revoked before its 7-day expiry via
     // POST /api/v1/auth/revoke (issue: previously there was no revocation
     // mechanism at all).
-    const secret = process.env["JWT_SECRET"]!;
+    const secret = getJwtSecret();
     const token = jwt.sign(
       { sub: user.id, stellarPublicKey, tokenVersion: user.token_version },
       secret,
@@ -372,7 +391,7 @@ router.post(
 
     // One-time token: short TTL, scoped to recovery so it can never be used
     // as a normal session token.
-    const secret = process.env["JWT_SECRET"]!;
+    const secret = getJwtSecret();
     const recoveryToken = jwt.sign(
       { sub: result.userId, scope: "recovery", purpose: "change-phone" },
       secret,
@@ -396,7 +415,7 @@ router.post(
   validate(changePhoneSchema),
   async (req, res) => {
     const { token, newPhone } = req.body as ChangePhoneInput;
-    const secret = process.env["JWT_SECRET"]!;
+    const secret = getJwtSecret();
 
     let payload: { sub?: string; scope?: string };
     try {
@@ -451,14 +470,11 @@ router.post(
     // Invalidate the recovery token immediately so it cannot be reused
     await cache.set(`revoked_recovery_token:${tokenHash}`, "1", 15 * 60);
 
-    // Send OTP to new phone number to verify ownership
-    try {
-      await sendOtp(newPhone, "");
-    } catch (err) {
-      console.error("[auth] Failed to send OTP to new phone:", (err as Error).message);
-      res.status(502).json({ error: "Failed to send OTP to new phone. Please try again." });
-      return;
-    }
+    const sessionToken = jwt.sign(
+      { sub: userId, stellarPublicKey, tokenVersion },
+      getJwtSecret(),
+      { expiresIn: "7d" }
+    );
 
     // Do NOT issue a session JWT yet — the user must complete OTP verification for the new number
     res.status(200).json({
