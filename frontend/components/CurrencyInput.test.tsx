@@ -53,3 +53,16 @@ describe("CurrencyInput Component", () => {
     expect(handleChange).toHaveBeenCalledWith(400);
   });
 });
+
+describe("CurrencyInput available-amount caption (#447)", () => {
+  it("renders the available balance caption when availableAmount is provided", () => {
+    render(<CurrencyInput value={0} onChange={jest.fn()} id="amt" availableAmount="7,500.00" />);
+    const caption = screen.getByTestId("currency-input-available");
+    expect(caption).toHaveTextContent("Available: ₦7,500.00");
+  });
+
+  it("omits the caption when availableAmount is not provided", () => {
+    render(<CurrencyInput value={0} onChange={jest.fn()} id="amt" />);
+    expect(screen.queryByTestId("currency-input-available")).not.toBeInTheDocument();
+  });
+});
