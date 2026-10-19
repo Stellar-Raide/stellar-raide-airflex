@@ -99,9 +99,13 @@ export function validateEnv(
     }
   }
 
+  if (env["NODE_ENV"] === "production" && !env["REDIS_URL"]) {
+    errors.push("[startup] REDIS_URL is required in production");
+  }
+
   // Storage validation — when STORAGE_PROVIDER is s3 (or unset, since s3 is the
   // default) the S3_BUCKET and S3_REGION variables are mandatory (issue #248).
-  const storageProvider = (env["STORAGE_PROVIDER"] ?? "s3").toLowerCase();
+  const storageProvider = (env["STORAGE_PROVIDER"] ?? "local").toLowerCase();
   if (storageProvider === "s3") {
     const missingS3 = ["S3_BUCKET", "S3_REGION"].filter((k) => !env[k]);
     if (missingS3.length > 0) {

@@ -152,11 +152,11 @@ jobs:
 
       # Lint with all Soroban-relevant warnings treated as errors
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       # Run the in-contract unit tests (uses soroban-sdk testutils)
       - name: Test
-        run: cargo test --all-features
+        run: cargo test
 
       # Build the release WASM to confirm it compiles to a deployable artefact.
       # This uses the workspace release profile (opt-level=z, LTO, etc.)

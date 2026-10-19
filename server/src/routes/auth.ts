@@ -470,6 +470,15 @@ router.post(
     // Invalidate the recovery token immediately so it cannot be reused
     await cache.set(`revoked_recovery_token:${tokenHash}`, "1", 15 * 60);
 
+    // Send OTP to new phone number to verify ownership
+    try {
+      await sendOtp(newPhone, "");
+    } catch (err) {
+      console.error("[auth] Failed to send OTP to new phone:", (err as Error).message);
+      res.status(502).json({ error: "Failed to send OTP to new phone. Please try again." });
+      return;
+    }
+
     // Do NOT issue a session JWT yet — the user must complete OTP verification for the new number
     res.status(200).json({
       message: "Phone number updated. Please verify your new phone number with the OTP sent to complete sign-in.",

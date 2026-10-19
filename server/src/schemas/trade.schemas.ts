@@ -118,16 +118,18 @@ export const paginationSchema = z.object({
         .max(100, "limit must be 100 or fewer")
     ),
 
-  /**
-   * Optional filter — when supplied, only listings of this asset type are returned.
-   * Must be one of the canonical allowlist values so the same validation applies
-   * to both create and filter paths.
-   */
-  assetType: z
-    .enum(ASSET_TYPE_VALUES, {
-      message: "assetType must be one of: " + ASSET_TYPE_VALUES.join(", "),
-    })
-    .optional(),
+  assetType: z.string().optional(),
+  carrier: z.string().optional(),
+  minAmount: z
+    .string()
+    .optional()
+    .transform((v) => (v ? parseFloat(v) : undefined))
+    .pipe(z.number().min(0).optional()),
+  maxAmount: z
+    .string()
+    .optional()
+    .transform((v) => (v ? parseFloat(v) : undefined))
+    .pipe(z.number().min(0).optional()),
 });
 
 export type PaginationInput = z.infer<typeof paginationSchema>;
