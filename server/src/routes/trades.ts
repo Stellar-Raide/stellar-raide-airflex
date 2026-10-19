@@ -2,6 +2,7 @@ import { Router, type Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { asStroops, fromStroops, toStroops } from "@stellar-raide-stellar-raide-airflex/shared/units";
 import pool from "../db";
+import { cache } from "../services/cache";
 import { authenticate, optionalAuthenticate, AuthenticatedRequest } from "../middleware/authenticate";
 import { validate } from "../middleware/validate";
 import {
@@ -147,6 +148,23 @@ router.post(
     const { assetType, amount, expiresInHours } = req.body as CreateTradeInput;
     const { sub: sellerId, stellarPublicKey } = (req as unknown as AuthenticatedRequest).user;
 
+    const rawIdempotencyKey = req.header("idempotency-key");
+    const idempotencyKey = rawIdempotencyKey ? rawIdempotencyKey.trim() : null;
+    const cacheKey = idempotencyKey ? `idempotency:trades:${sellerId}:${idempotencyKey}` : null;
+
+    if (cacheKey) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached) as { status: number; body: unknown };
+          res.status(parsed.status).json(parsed.body);
+          return;
+        } catch {
+          // If parse fails, ignore corrupt cache entry and proceed
+        }
+      }
+    }
+
     // KYC gate: a seller must be verified before they can list a trade. This
     // is checked here rather than only relying on the frontend, since the
     // frontend check can be bypassed by calling the API directly.
@@ -215,7 +233,18 @@ router.post(
       [tradeId, sellerId, assetType, nairaAmount, contractListingId, expiresAt]
     );
 
-    res.status(201).json({ data: rows[0] });
+    const responseBody = { data: rows[0] };
+
+    if (cacheKey) {
+      // 24-hour TTL for idempotency key response
+      await cache.set(
+        cacheKey,
+        JSON.stringify({ status: 201, body: responseBody }),
+        24 * 60 * 60
+      );
+    }
+
+    res.status(201).json(responseBody);
   }
 );
 
