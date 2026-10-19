@@ -171,3 +171,120 @@ describe("MarketplaceListings Filter Panel (Issue #328)", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Issue #446 — skeleton loading states
+// ---------------------------------------------------------------------------
+
+describe("MarketplaceListings Skeleton Loading (#446)", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("renders skeleton placeholders while a filter fetch is in-flight", async () => {
+    // A fetch that never resolves keeps `loading` true so we can assert the
+    // skeleton state before data arrives.
+    global.fetch = jest.fn().mockImplementation(
+      () => new Promise(() => {}),
+    );
+
+    const { container } = render(<MarketplaceListings initialTrades={[]} />);
+
+    // Trigger a filter fetch.
+    fireEvent.change(screen.getByLabelText("Carrier"), { target: { value: "MTN" } });
+
+    // Skeletons are animated <article> placeholders with animate-pulse.
+    const skeletons = container.querySelectorAll("article.animate-pulse");
+    expect(skeletons.length).toBeGreaterThan(0);
+
+    // The plain "Updating listings…" text must no longer be shown.
+    expect(screen.queryByText("Updating listings…")).not.toBeInTheDocument();
+  });
+
+  it("shows skeletons on initial mount when fetchOnMount is true", async () => {
+    global.fetch = jest.fn().mockImplementation(
+      () => new Promise(() => {}),
+    );
+
+    const { container } = render(<MarketplaceListings fetchOnMount />);
+
+    // Initial render must show skeletons (loading seeded from fetchOnMount).
+    const skeletons = container.querySelectorAll("article.animate-pulse");
+    expect(skeletons.length).toBeGreaterThan(0);
+    // And it must have kicked off a fetch on mount.
+    expect(global.fetch).toHaveBeenCalled();
+  });
+
+  it("replaces skeletons with real cards once data resolves", async () => {
+    const resolvedTrade: TradeOffer = {
+      id: "trade-x",
+      seller_id: "user-x",
+      buyer_id: null,
+      asset_type: "MTN_AIRTIME",
+      amount: 1500,
+      fee_amount: 22,
+      seller_net_amount: 1478,
+      status: "Active",
+      contract_listing_id: "listing-x",
+      escrow_tx_hash: null,
+      expires_at: new Date(Date.now() + 3600000).toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      seller_handle: "@sellerx",
+    };
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [resolvedTrade],
+        pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      }),
+    });
+
+    const { container } = render(<MarketplaceListings fetchOnMount />);
+
+    // Skeletons appear first…
+    expect(container.querySelectorAll("article.animate-pulse").length).toBeGreaterThan(0);
+
+    // …then the real card renders once the fetch resolves.
+    await waitFor(() => {
+      expect(screen.getByText("₦1,500")).toBeInTheDocument();
+    });
+    expect(container.querySelectorAll("article.animate-pulse").length).toBe(0);
+  });
+
+  it("skeletons use dark-mode theme tokens", () => {
+    global.fetch = jest.fn().mockImplementation(() => new Promise(() => {}));
+    const { container } = render(<MarketplaceListings fetchOnMount />);
+    const skeleton = container.querySelector("article.animate-pulse");
+    expect(skeleton).not.toBeNull();
+    expect(skeleton!.className).toContain("dark:bg-gray-800");
+    expect(skeleton!.className).toContain("dark:border-gray-700");
+  });
+});
+
+describe("TradeCardSkeleton (#446)", () => {
+  it("renders the requested number of skeleton cards", () => {
+    const TradeCardSkeleton = require("./TradeCardSkeleton").default;
+    const { container } = render(<TradeCardSkeleton count={5} />);
+    expect(container.querySelectorAll("article.animate-pulse").length).toBe(5);
+  });
+
+  it("defaults to eight skeletons", () => {
+    const TradeCardSkeleton = require("./TradeCardSkeleton").default;
+    const { container } = render(<TradeCardSkeleton />);
+    expect(container.querySelectorAll("article.animate-pulse").length).toBe(8);
+  });
+
+  it("is hidden from assistive tech", () => {
+    const TradeCardSkeleton = require("./TradeCardSkeleton").default;
+    const { container } = render(<TradeCardSkeleton count={1} />);
+    expect(container.querySelector("article")!.getAttribute("aria-hidden")).toBe("true");
+  });
+});
