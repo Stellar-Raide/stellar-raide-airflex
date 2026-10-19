@@ -17,9 +17,13 @@ pub enum DataKey {
     Reputation(Address),
     Paused,
     PausedAt,
+    ActiveListingCount(Address),
 }
 
 pub const EMERGENCY_TIMELOCK_SECS: u64 = 72 * 60 * 60; // 72 hours = 259,200 seconds
+
+/// Maximum number of active listings allowed per seller to prevent storage exhaustion (Issue #505).
+pub const MAX_ACTIVE_LISTINGS_PER_SELLER: u32 = 10;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -99,6 +103,7 @@ pub enum ContractError {
     InvalidAmount = 12,
     FillAlreadyProcessed = 13,
     NotAParty = 14,
+    StorageLimitExceeded = 15,
 }
 
 // ---------------------------------------------------------------------------
@@ -186,6 +191,45 @@ fn update_reputation(env: &Env, seller: &Address, volume: i128, disputed: bool) 
         17_280,
         17_280 * 365,
     );
+}
+
+fn get_seller_active_listing_count(env: &Env, seller: &Address) -> u32 {
+    env.storage()
+        .persistent()
+        .get(&DataKey::ActiveListingCount(seller.clone()))
+        .unwrap_or(0u32)
+}
+
+fn increment_active_listing_count(env: &Env, seller: &Address) {
+    let current = get_seller_active_listing_count(env, seller);
+    let next = current.saturating_add(1);
+    env.storage()
+        .persistent()
+        .set(&DataKey::ActiveListingCount(seller.clone()), &next);
+    env.storage().persistent().extend_ttl(
+        &DataKey::ActiveListingCount(seller.clone()),
+        17_280,
+        17_280 * 30,
+    );
+}
+
+fn decrement_active_listing_count(env: &Env, seller: &Address) {
+    let current = get_seller_active_listing_count(env, seller);
+    let next = current.saturating_sub(1);
+    if next == 0 {
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ActiveListingCount(seller.clone()));
+    } else {
+        env.storage()
+            .persistent()
+            .set(&DataKey::ActiveListingCount(seller.clone()), &next);
+        env.storage().persistent().extend_ttl(
+            &DataKey::ActiveListingCount(seller.clone()),
+            17_280,
+            17_280 * 30,
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +348,11 @@ impl MarketplaceContract {
             return Err(ContractError::InvalidExpiry);
         }
 
+        let active_count = get_seller_active_listing_count(&env, &seller);
+        if active_count >= MAX_ACTIVE_LISTINGS_PER_SELLER {
+            return Err(ContractError::StorageLimitExceeded);
+        }
+
         let id: u64 = env
             .storage()
             .instance()
@@ -332,6 +381,8 @@ impl MarketplaceContract {
         env.storage()
             .persistent()
             .extend_ttl(&DataKey::Listing(id), 17_280, 17_280 * 30);
+
+        increment_active_listing_count(&env, &seller);
 
         env.events()
             .publish((topic_listed(), asset_type), (id, seller, price, quantity));
@@ -383,6 +434,8 @@ impl MarketplaceContract {
         env.storage()
             .persistent()
             .set(&DataKey::Listing(listing_id), &listing);
+
+        decrement_active_listing_count(&env, &listing.seller);
 
         env.events()
             .publish((topic_sold(),), (listing_id, buyer, listing.price));
@@ -707,6 +760,82 @@ impl MarketplaceContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false)
+    }
+
+    // -----------------------------------------------------------------------
+    // cancel_listing — called by the Seller (Issue #505)
+    // -----------------------------------------------------------------------
+
+    /// Cancels an active listing before it is purchased, decrementing active count.
+    ///
+    /// Callable only by the listing seller while status is Active.
+    pub fn cancel_listing(env: Env, seller: Address, listing_id: u64) -> Result<(), ContractError> {
+        require_not_paused(&env)?;
+        seller.require_auth();
+
+        let mut listing: Listing = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Listing(listing_id))
+            .ok_or(ContractError::TradeNotFound)?;
+
+        if listing.seller != seller {
+            return Err(ContractError::Unauthorized);
+        }
+
+        if listing.status != ListingStatus::Active {
+            return Err(ContractError::WrongStatus);
+        }
+
+        listing.status = ListingStatus::Cancelled;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Listing(listing_id), &listing);
+
+        decrement_active_listing_count(&env, &listing.seller);
+
+        env.events()
+            .publish((topic_cancelled(),), (listing_id, seller));
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // close_expired_listing — callable once expired (Issue #505)
+    // -----------------------------------------------------------------------
+
+    /// Closes an active listing that has passed its expiration timestamp, reclaiming active capacity.
+    pub fn close_expired_listing(env: Env, listing_id: u64) -> Result<(), ContractError> {
+        require_not_paused(&env)?;
+
+        let mut listing: Listing = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Listing(listing_id))
+            .ok_or(ContractError::TradeNotFound)?;
+
+        if listing.status != ListingStatus::Active {
+            return Err(ContractError::WrongStatus);
+        }
+
+        let now = env.ledger().timestamp();
+        if now < listing.expires_at {
+            return Err(ContractError::TradeExpired);
+        }
+
+        listing.status = ListingStatus::Cancelled;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Listing(listing_id), &listing);
+
+        decrement_active_listing_count(&env, &listing.seller);
+
+        env.events().publish((topic_cancelled(),), (listing_id,));
+        Ok(())
+    }
+
+    /// Returns the active listing count currently held by a seller.
+    pub fn get_active_listing_count(env: Env, seller: Address) -> u32 {
+        get_seller_active_listing_count(&env, &seller)
     }
 }
 
@@ -1418,5 +1547,215 @@ mod test {
 
         env.set_auths(&[]);
         client.transfer_admin(&new_admin);
+    }
+
+    // -----------------------------------------------------------------------
+    // Storage limits guard tests (Issue #505)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_active_listing_cap_enforced() {
+        let (env, client, _admin, seller, _buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        // Seller creates up to MAX_ACTIVE_LISTINGS_PER_SELLER (10) listings successfully
+        for _ in 0..MAX_ACTIVE_LISTINGS_PER_SELLER {
+            client.create_listing(
+                &seller,
+                &token,
+                &100_0000000i128,
+                &AssetCategory::Airtime,
+                &symbol_short!("MTN"),
+                &100i128,
+                &(1_000_000 + 86_400),
+            );
+        }
+
+        assert_eq!(
+            client.get_active_listing_count(&seller),
+            MAX_ACTIVE_LISTINGS_PER_SELLER
+        );
+
+        // 11th listing creation must be rejected with StorageLimitExceeded
+        let result = client.try_create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &AssetCategory::Airtime,
+            &symbol_short!("MTN"),
+            &100i128,
+            &(1_000_000 + 86_400),
+        );
+        assert_eq!(result, Err(Ok(ContractError::StorageLimitExceeded)));
+    }
+
+    #[test]
+    fn test_active_listing_count_decrements_on_cancel_and_allows_recreation() {
+        let (env, client, _admin, seller, _buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let mut last_id = 0u64;
+        for _ in 0..MAX_ACTIVE_LISTINGS_PER_SELLER {
+            last_id = client.create_listing(
+                &seller,
+                &token,
+                &100_0000000i128,
+                &AssetCategory::Airtime,
+                &symbol_short!("MTN"),
+                &100i128,
+                &(1_000_000 + 86_400),
+            );
+        }
+        assert_eq!(
+            client.get_active_listing_count(&seller),
+            MAX_ACTIVE_LISTINGS_PER_SELLER
+        );
+
+        // Cancel one listing
+        client.cancel_listing(&seller, &last_id);
+        assert_eq!(
+            client.get_active_listing_count(&seller),
+            MAX_ACTIVE_LISTINGS_PER_SELLER - 1
+        );
+
+        let listing = client.get_listing(&last_id);
+        assert_eq!(listing.status, ListingStatus::Cancelled);
+
+        // New listing can now be created successfully
+        let new_id = client.create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &AssetCategory::Airtime,
+            &symbol_short!("MTN"),
+            &100i128,
+            &(1_000_000 + 86_400),
+        );
+        assert!(new_id > last_id);
+        assert_eq!(
+            client.get_active_listing_count(&seller),
+            MAX_ACTIVE_LISTINGS_PER_SELLER
+        );
+    }
+
+    #[test]
+    fn test_active_listing_count_decrements_on_deposit_to_escrow() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let mut first_id = 0u64;
+        for i in 0..MAX_ACTIVE_LISTINGS_PER_SELLER {
+            let id = client.create_listing(
+                &seller,
+                &token,
+                &100_0000000i128,
+                &AssetCategory::Data,
+                &symbol_short!("GLO"),
+                &50i128,
+                &(1_000_000 + 86_400),
+            );
+            if i == 0 {
+                first_id = id;
+            }
+        }
+        assert_eq!(
+            client.get_active_listing_count(&seller),
+            MAX_ACTIVE_LISTINGS_PER_SELLER
+        );
+
+        // Buyer purchases the listing
+        client.deposit_to_escrow(&buyer, &first_id);
+        assert_eq!(
+            client.get_active_listing_count(&seller),
+            MAX_ACTIVE_LISTINGS_PER_SELLER - 1
+        );
+
+        // Seller can now create another listing
+        let new_id = client.create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &AssetCategory::Data,
+            &symbol_short!("GLO"),
+            &50i128,
+            &(1_000_000 + 86_400),
+        );
+        assert!(new_id > 0);
+        assert_eq!(
+            client.get_active_listing_count(&seller),
+            MAX_ACTIVE_LISTINGS_PER_SELLER
+        );
+    }
+
+    #[test]
+    fn test_close_expired_listing_decrements_active_count() {
+        let (env, client, _admin, seller, _buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let mut target_id = 0u64;
+        for i in 0..MAX_ACTIVE_LISTINGS_PER_SELLER {
+            let id = client.create_listing(
+                &seller,
+                &token,
+                &100_0000000i128,
+                &AssetCategory::Airtime,
+                &symbol_short!("AIRTEL"),
+                &20i128,
+                &(1_000_000 + 100),
+            );
+            if i == 0 {
+                target_id = id;
+            }
+        }
+
+        // Advance ledger time past expiry
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000 + 200);
+
+        // Close expired listing
+        client.close_expired_listing(&target_id);
+        assert_eq!(
+            client.get_active_listing_count(&seller),
+            MAX_ACTIVE_LISTINGS_PER_SELLER - 1
+        );
+
+        // Try closing unexpired or non-active listing
+        let unexpired_id = client.create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &AssetCategory::Airtime,
+            &symbol_short!("AIRTEL"),
+            &20i128,
+            &(1_000_000 + 200 + 86_400),
+        );
+        let err_unexpired = client.try_close_expired_listing(&unexpired_id);
+        assert_eq!(err_unexpired, Err(Ok(ContractError::TradeExpired)));
+    }
+
+    #[test]
+    fn test_cancel_listing_unauthorized_and_wrong_status() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let listing_id = client.create_listing(
+            &seller,
+            &token,
+            &100_0000000i128,
+            &AssetCategory::Airtime,
+            &symbol_short!("MTN"),
+            &100i128,
+            &(1_000_000 + 86_400),
+        );
+
+        let stranger = Address::generate(&env);
+        let result_unauth = client.try_cancel_listing(&stranger, &listing_id);
+        assert_eq!(result_unauth, Err(Ok(ContractError::Unauthorized)));
+
+        // Buyer purchases listing
+        client.deposit_to_escrow(&buyer, &listing_id);
+
+        // Seller attempts to cancel Sold listing
+        let result_wrong_status = client.try_cancel_listing(&seller, &listing_id);
+        assert_eq!(result_wrong_status, Err(Ok(ContractError::WrongStatus)));
     }
 }

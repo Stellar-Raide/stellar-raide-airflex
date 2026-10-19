@@ -29,6 +29,7 @@ next integer, because deployed callers decode by discriminant.
 | `13` | `FillAlreadyProcessed` | The sub-escrow fill has already been released or refunded. | Escrow & Marketplace |
 | `14` | `NotAParty` | The caller is neither the seller nor a buyer of the trade. | Escrow & Marketplace |
 | `15` | `PauseCooldownNotExpired` | `unpause` was called before the 5-minute pause cooldown elapsed. | Escrow |
+| `15` | `StorageLimitExceeded` | The seller has reached the maximum permitted number of active listings in storage. | Marketplace |
 | `16` | `DuplicateFill` | The buyer already holds an active (unreleased, unrefunded) sub-escrow on this trade — one active fill per buyer per trade (issue #294). | Escrow |
 
 ## Escrow Contract — Canonical Error Code Table
