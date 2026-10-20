@@ -154,9 +154,9 @@ jobs:
       - name: Clippy
         run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
 
-      # Run the in-contract unit tests (uses soroban-sdk testutils)
+      # Run the in-contract unit tests (uses soroban-sdk testutils on host)
       - name: Test
-        run: cargo test
+        run: cargo test --target $(rustc -vV | sed -n 's|host: ||p')
 
       # Build the release WASM to confirm it compiles to a deployable artefact.
       # This uses the workspace release profile (opt-level=z, LTO, etc.)
