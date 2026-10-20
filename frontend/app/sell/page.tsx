@@ -6,6 +6,28 @@ import type { TradeOffer } from "../../../server/src/types/trade";
 import { CurrencyInput } from "../../components/CurrencyInput";
 import { toStroops } from "@stellar-raide-stellar-raide-airflex/shared/units";
 import { getCachedConversionRate, setCachedConversionRate } from "./ratesCache";
+import { OfflineOrderList } from "./OfflineOrderList";
+import { enqueueOrder, newIdempotencyKey } from "../offline/orderQueue";
+import { useOfflineOrderQueue } from "../offline/useOfflineOrderQueue";
+
+/** Remembers the last KYC status the API returned, so the form still works offline. */
+const KYC_STATUS_STORAGE_KEY = "stellar-raide-stellar-raide-airflex:sell-kyc-status";
+
+function readStoredKycStatus(): string | null {
+  try {
+    return window.localStorage.getItem(KYC_STATUS_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeKycStatus(status: string): void {
+  try {
+    window.localStorage.setItem(KYC_STATUS_STORAGE_KEY, status);
+  } catch {
+    // Storage unavailable: the form simply cannot be used offline next time.
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -239,8 +261,35 @@ export default function SellPage() {
   const [serverError, setServerError]   = useState<string | null>(null);
   const [loading, setLoading]           = useState(false);
   const [createdTrade, setCreatedTrade] = useState<TradeOffer | null>(null);
+  const [offline, setOffline]           = useState(false);
+  const [queuedNotice, setQueuedNotice] = useState<string | null>(null);
+  const [flushedNotice, setFlushedNotice] = useState<string | null>(null);
 
   const apiUrl = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:3001";
+
+  const offlineQueue = useOfflineOrderQueue({
+    apiUrl,
+    getToken,
+    onFlushed: (result) => {
+      const n = result.sentKeys.length;
+      setQueuedNotice(null);
+      setFlushedNotice(
+        `${n} queued ${n === 1 ? "listing was" : "listings were"} sent now that you are back online.`,
+      );
+    },
+  });
+
+  useEffect(() => {
+    setOffline(!window.navigator.onLine);
+    const goOffline = () => setOffline(true);
+    const goOnline = () => setOffline(false);
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => {
+      window.removeEventListener("offline", goOffline);
+      window.removeEventListener("online", goOnline);
+    };
+  }, []);
 
   useEffect(() => {
     const cached = getCachedConversionRate();
@@ -287,9 +336,17 @@ export default function SellPage() {
     })
       .then((r) => r.json() as Promise<{ data?: { kycStatus?: string } }>)
       .then((data) => {
-        setKycStatus(data.data?.kycStatus ?? "unverified");
+        const status = data.data?.kycStatus ?? "unverified";
+        storeKycStatus(status);
+        setKycStatus(status);
       })
-      .catch(() => setKycStatus("unverified"))
+      .catch(() => {
+        // Offline, the profile request cannot succeed: fall back to the last
+        // status seen so a verified seller can still queue a listing. The
+        // server checks KYC again when the queued order is sent.
+        const stored = window.navigator.onLine ? null : readStoredKycStatus();
+        setKycStatus(stored ?? "unverified");
+      })
       .finally(() => setKycLoading(false));
   }, [apiUrl]);
 
@@ -329,6 +386,34 @@ export default function SellPage() {
       return;
     }
 
+    // The API speaks the escrow contract's unit: the naira the seller typed is
+    // converted to stroops exactly once, here, with the shared helper (issue
+    // #292). `Number(...)` is what JSON can carry — the value is a safe integer
+    // well under 2^53 (capped at ₦1,000,000).
+    const amountNaira = parseFloat(fields.amount);
+    const amount = Number(toStroops(amountNaira));
+    // One key per submit, reused if the order has to be queued, so a request
+    // that did reach the server is never listed twice when the queue replays it.
+    const idempotencyKey = newIdempotencyKey();
+
+    function queueOrder(notice: string) {
+      enqueueOrder({
+        idempotencyKey,
+        assetType: fields.assetType,
+        amount,
+        amountNaira,
+        expiresInHours: fields.expiresInHours,
+      });
+      setFlushedNotice(null);
+      setQueuedNotice(notice);
+      setFields({ assetType: "", amount: "", expiresInHours: 24 });
+    }
+
+    if (!window.navigator.onLine) {
+      queueOrder("You are offline. Your listing is saved on this device and will be sent when you reconnect.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -337,14 +422,11 @@ export default function SellPage() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
           assetType: fields.assetType,
-          // The API speaks the escrow contract's unit: the naira the seller
-          // typed is converted to stroops exactly once, here, with the shared
-          // helper (issue #292). `Number(...)` is what JSON can carry — the
-          // value is a safe integer well under 2^53 (capped at ₦1,000,000).
-          amount: Number(toStroops(parseFloat(fields.amount))),
+          amount,
           expiresInHours: fields.expiresInHours,
         }),
       });
@@ -371,7 +453,9 @@ export default function SellPage() {
 
       setCreatedTrade(data.data);
     } catch {
-      setServerError("Network error. Check your connection and try again.");
+      // The request never got an answer. Keep the order instead of losing it:
+      // it is replayed with the same idempotency key once we are online.
+      queueOrder("Connection lost. Your listing is saved on this device and will be sent when you reconnect.");
     } finally {
       setLoading(false);
     }
@@ -399,6 +483,40 @@ export default function SellPage() {
 
   return (
     <>
+      {offline && (
+        <div
+          role="status"
+          data-testid="offline-banner"
+          className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-medium text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300"
+        >
+          You are offline. Listings you create are saved on this device and sent when you reconnect.
+        </div>
+      )}
+      {queuedNotice && (
+        <div
+          role="status"
+          data-testid="queued-notice"
+          className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300"
+        >
+          {queuedNotice}
+        </div>
+      )}
+      {flushedNotice && (
+        <div
+          role="status"
+          data-testid="flushed-notice"
+          className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300"
+        >
+          {flushedNotice}
+        </div>
+      )}
+      <OfflineOrderList
+        orders={offlineQueue.queue}
+        offline={offline}
+        onRetry={(key) => void offlineQueue.retry(key)}
+        onDiscard={offlineQueue.discard}
+      />
+
       {/* Page header */}
       <div className="mb-8">
         <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-violet-500 dark:text-violet-400">
@@ -588,6 +706,8 @@ export default function SellPage() {
               <Spinner label="Creating listing" />
               Creating listing…
             </>
+          ) : offline ? (
+            "Save listing offline"
           ) : (
             "Create listing"
           )}
