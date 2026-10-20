@@ -47,30 +47,7 @@ tolerated. When in doubt, default to kindness.
 
 ## Project Structure
 
-```
-stellar-raide-stellar-raide-airflex/
-├── apps/
-│   └── docs-site/       # Public docs site (Next.js + Nextra) — docs.stellar-raide-stellar-raide-airflex.io
-├── contracts/          # Soroban smart contracts (Rust)
-│   └── escrow/         # Escrow contract
-├── docs/               # Project documentation
-├── frontend/
-│   └── app/            # Next.js application (TypeScript + Tailwind CSS)
-├── server/
-│   └── src/
-│       ├── middleware/  # Express middleware (auth, etc.)
-│       ├── routes/      # API route handlers
-│       ├── services/    # External integrations (Stellar SDK, Paystack, etc.)
-│       ├── types/       # Shared TypeScript types
-│       ├── db.ts        # PostgreSQL connection pool
-│       └── index.ts     # Server entry point
-├── .gitignore
-├── CONTRIBUTING.md      # This file
-├── LICENSE
-└── README.md
-```
 
----
 
 ## Development Setup
 
