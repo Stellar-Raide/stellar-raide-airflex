@@ -235,4 +235,93 @@ describe("Database Migrations CLI (migrate.ts)", () => {
       `[migrate] FAILED: ${second} — boom`
     );
   });
+  describe("rollback with down/ scripts (issue #543)", () => {
+    function mockPoolFor(filename: string, failOn?: string) {
+      const client = {
+        query: jest.fn().mockImplementation(async (text: string) => {
+          if (failOn && text.includes(failOn)) throw new Error("down failed");
+          if (text.includes("SELECT id, filename FROM schema_migrations")) {
+            return { rows: [{ id: 7, filename }] };
+          }
+          return { rows: [] };
+        }),
+        release: jest.fn(),
+      };
+      return { client, pool: { connect: jest.fn().mockResolvedValue(client) } };
+    }
+
+    it("runs down/<filename> and removes the record in one transaction", async () => {
+      jest.spyOn(logger, "info").mockImplementation(() => {});
+      fs.mkdirSync(path.join(tempDir, "down"));
+      const downSql = "DROP INDEX IF EXISTS idx_trade_offers_status_created_at;";
+      fs.writeFileSync(path.join(tempDir, "down", "012_index.sql"), downSql);
+      const { client, pool } = mockPoolFor("012_index.sql");
+
+      const rolledBack = await rollbackLastMigration({ pool: pool as any, migrationsDir: tempDir });
+
+      expect(rolledBack).toBe("012_index.sql");
+      const statements = client.query.mock.calls.map(([text]) => String(text).trim());
+      const begin = statements.indexOf("BEGIN");
+      expect(begin).toBeGreaterThan(-1);
+      expect(statements.slice(begin)).toEqual([
+        "BEGIN",
+        downSql,
+        "DELETE FROM schema_migrations WHERE id = $1;",
+        "COMMIT",
+      ]);
+    });
+
+    it("rolls back and keeps the record when the down script fails", async () => {
+      jest.spyOn(logger, "error").mockImplementation(() => {});
+      fs.mkdirSync(path.join(tempDir, "down"));
+      fs.writeFileSync(path.join(tempDir, "down", "011_table.sql"), "DROP TABLE fraud_flags;");
+      const { client, pool } = mockPoolFor("011_table.sql", "DROP TABLE");
+
+      await expect(
+        rollbackLastMigration({ pool: pool as any, migrationsDir: tempDir })
+      ).rejects.toThrow("down failed");
+
+      expect(client.query).toHaveBeenCalledWith("ROLLBACK");
+      expect(client.query).not.toHaveBeenCalledWith("COMMIT");
+      expect(client.release).toHaveBeenCalled();
+    });
+
+    it("only removes the record when no down script exists", async () => {
+      jest.spyOn(logger, "info").mockImplementation(() => {});
+      const { client, pool } = mockPoolFor("001_no_down.sql");
+
+      await rollbackLastMigration({ pool: pool as any, migrationsDir: tempDir });
+
+      expect(client.query).not.toHaveBeenCalledWith("BEGIN");
+      expect(client.query).toHaveBeenCalledWith(
+        expect.stringContaining("DELETE FROM schema_migrations WHERE id = $1"),
+        [7]
+      );
+    });
+
+    it("ships a down script for every migration added from 011 onwards", () => {
+      const dir = path.resolve(__dirname, "migrations");
+      const forward = fs
+        .readdirSync(dir)
+        .filter((file) => file.endsWith(".sql") && file >= "011");
+      for (const file of forward) {
+        expect(fs.existsSync(path.join(dir, "down", file))).toBe(true);
+      }
+      expect(forward).toEqual(
+        expect.arrayContaining(["011_fraud_flags.sql", "012_trade_offers_status_created_at_index.sql"])
+      );
+    });
+
+    it("012 creates the (status, created_at DESC) index on trade_offers and its down drops it", () => {
+      const dir = path.resolve(__dirname, "migrations");
+      const up = fs.readFileSync(path.join(dir, "012_trade_offers_status_created_at_index.sql"), "utf-8");
+      const down = fs.readFileSync(path.join(dir, "down", "012_trade_offers_status_created_at_index.sql"), "utf-8");
+
+      expect(up).toMatch(
+        /CREATE INDEX IF NOT EXISTS idx_trade_offers_status_created_at\s+ON trade_offers \(status, created_at DESC\);/
+      );
+      expect(up).not.toMatch(/CONCURRENTLY/);
+      expect(down).toMatch(/DROP INDEX IF EXISTS idx_trade_offers_status_created_at;/);
+    });
+  });
 });

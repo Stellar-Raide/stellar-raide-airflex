@@ -67,6 +67,7 @@ SOROBAN_RPC_URL=https://mainnet.stellar.validationcloud.io/v1/<API_KEY>
 | `PAYSTACK_SECRET_KEY` | `sk_test_xxx` | Paystack secret API key. |
 | `PAYSTACK_PREFERRED_BANK` | `wema-bank` | Preferred bank slug for dedicated virtual accounts (`wema-bank`, `access-bank`, `gtbank`). |
 | `TERMII_API_KEY` | `TLxxx` | Termii API key for OTP delivery via SMS. |
+| `APP_BASE_URL` | `https://stellar-raide-stellar-raide-airflex.app` | Public frontend URL used for deep links in notifications (e.g. the dispute link in `trade_dispute_opened`). When unset, messages say "open the AirFlex app" instead of a link. |
 
 ### Fraud Detection & Velocity Limits
 
@@ -75,6 +76,8 @@ SOROBAN_RPC_URL=https://mainnet.stellar.validationcloud.io/v1/<API_KEY>
 | `MAX_TRADES_PER_HOUR` | `10` | Maximum number of trade offers a single user can create per hour. |
 | `MAX_DEPOSITS_PER_DAY` | `5` | Maximum number of fiat deposits a user can initiate per day. |
 | `MAX_WITHDRAWALS_PER_DAY` | `3` | Maximum number of fiat withdrawals a user can initiate per day. |
+| `FAILED_TRADE_THRESHOLD` | `5` | Consecutive failed trade attempts within the window that flag an account for admin review (`REPEATED_FAILED_TRADES`). A successful trade resets the count. |
+| `FAILED_TRADE_WINDOW_SECONDS` | `3600` | Rolling window for `FAILED_TRADE_THRESHOLD`. Failures older than this are forgotten. |
 
 ### Trade Verification Retries
 

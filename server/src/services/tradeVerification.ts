@@ -41,6 +41,7 @@ import { WalletService } from "./wallet";
 import { creditReferralReward } from "./referrals";
 import { NotificationService } from "./notifications";
 import { ContractError, parseContractError } from "./contractErrors";
+import { FraudDetectionService, type FailedTradeReason } from "./fraudDetection";
 import type { TradeOffer } from "../types/trade";
 
 // ---------------------------------------------------------------------------
@@ -167,18 +168,25 @@ export async function triggerVerification(
     [tradeId]
   );
 
+  // Every rejected confirmation counts as a failed trade attempt by the
+  // caller for fraud detection (issue #491).
+  const reject = (message: string, statusCode: number): VerificationError => {
+    trackFailedTrade([sellerId], tradeId, "CONFIRMATION_REJECTED");
+    return new VerificationError(message, statusCode);
+  };
+
   if (!rows.length) {
-    throw new VerificationError("Trade not found", 404);
+    throw reject("Trade not found", 404);
   }
 
   const trade = rows[0]!;
 
   if (trade.seller_id !== sellerId) {
-    throw new VerificationError("Only the seller can confirm delivery", 403);
+    throw reject("Only the seller can confirm delivery", 403);
   }
 
   if (trade.status !== "Locked") {
-    throw new VerificationError(
+    throw reject(
       `Trade cannot be confirmed in its current state (${trade.status}). ` +
         `Only Locked trades can be confirmed.`,
       400
@@ -186,7 +194,7 @@ export async function triggerVerification(
   }
 
   if (!trade.contract_listing_id) {
-    throw new VerificationError(
+    throw reject(
       "Trade has no associated on-chain listing ID",
       400
     );
@@ -280,6 +288,9 @@ export async function runVerificationWithRetry(
     // ------------------------------------------------------------------
     const participants = buildParticipantList(trade);
 
+    // A completed trade breaks any run of consecutive failures (issue #491)
+    resetFailedTrades(participants, tradeId);
+
     SseEmitter.emit(participants, {
       type:    "trade_completed",
       tradeId,
@@ -304,6 +315,10 @@ export async function runVerificationWithRetry(
     // ------------------------------------------------------------------
     if (isPermanentError(err)) {
       log("error", tradeId, `Permanent error encountered [${errorName}]: ${message}. Aborting retries immediately.`);
+      // The contract rejected the release outright, so the trade itself is
+      // bad — count it against both parties (issue #491). Exhausted retries
+      // on transient errors below are infrastructure failures and don't count.
+      trackFailedTrade(buildParticipantList(trade), tradeId, "VERIFICATION_FAILED");
       await escalateToDisputed(trade, `Permanent error: ${message}`);
       return;
     }
@@ -385,6 +400,34 @@ async function escalateToDisputed(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Records a failed trade attempt for each user with the fraud-detection
+ * service. Fire-and-forget: tracking problems are logged, never surfaced to
+ * the trade flow.
+ */
+function trackFailedTrade(
+  userIds: string[],
+  tradeId: string,
+  reason: FailedTradeReason
+): void {
+  for (const userId of userIds) {
+    void FraudDetectionService.recordFailedTrade(userId, tradeId, reason).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      log("warn", tradeId, `Failed-trade tracking failed for user ${userId}: ${msg}`);
+    });
+  }
+}
+
+/** Clears failed-trade history for each user after a success. Fire-and-forget. */
+function resetFailedTrades(userIds: string[], tradeId: string): void {
+  for (const userId of userIds) {
+    void FraudDetectionService.resetFailedTrades(userId).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      log("warn", tradeId, `Failed-trade reset failed for user ${userId}: ${msg}`);
+    });
+  }
+}
 
 /** Builds a deduplicated list of user IDs involved in a trade. */
 function buildParticipantList(trade: TradeOffer): string[] {

@@ -155,7 +155,26 @@ export async function rollbackLastMigration(options?: MigrateOptions): Promise<s
     }
 
     const lastMigration = res.rows[0];
-    await client.query(`DELETE FROM schema_migrations WHERE id = $1;`, [lastMigration.id]);
+
+    // A migration can ship an explicit reverse script at down/<filename>.
+    // When present it runs in the same transaction as removing the record, so
+    // a failed down step leaves both the schema and the record untouched.
+    const downPath = path.join(getMigrationsDir(options?.migrationsDir), "down", lastMigration.filename);
+    if (fs.existsSync(downPath)) {
+      await client.query("BEGIN");
+      try {
+        await client.query(fs.readFileSync(downPath, "utf-8"));
+        await client.query(`DELETE FROM schema_migrations WHERE id = $1;`, [lastMigration.id]);
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        logger.error({ err, file: lastMigration.filename }, `[migrate] Down step FAILED: ${lastMigration.filename}`);
+        throw err;
+      }
+      logger.info(`[migrate] Reverted schema with down/${lastMigration.filename}`);
+    } else {
+      await client.query(`DELETE FROM schema_migrations WHERE id = $1;`, [lastMigration.id]);
+    }
 
     logger.info(`[migrate] Rolled back migration record: ${lastMigration.filename}`);
 

@@ -31,6 +31,61 @@ export interface FlaggedAccount {
   violations: Array<{ action: string; timestamp: string; details?: unknown }>;
 }
 
+// ---------------------------------------------------------------------------
+// Repeated failed trades (issue #491)
+// ---------------------------------------------------------------------------
+
+/** Reason code persisted on fraud_flags rows raised by the failed-trade rule. */
+export const REPEATED_FAILED_TRADES = "REPEATED_FAILED_TRADES";
+
+/** Why a single trade attempt counted as failed. */
+export type FailedTradeReason =
+  /** The user's confirm-delivery request was rejected (not seller, wrong state, ...). */
+  | "CONFIRMATION_REJECTED"
+  /** Escrow release was rejected by the contract with a permanent error. */
+  | "VERIFICATION_FAILED";
+
+export interface FailedTradeRule {
+  threshold: number;
+  windowSeconds: number;
+}
+
+export interface FailedTradeOutcome {
+  /** Failures inside the current window, including this one. */
+  failureCount: number;
+  /** True only when this failure created a new open flag. */
+  flagged: boolean;
+}
+
+export type FraudFlagStatus = "open" | "reviewed" | "dismissed";
+
+export interface FraudFlag {
+  id: string;
+  user_id: string;
+  reason_code: string;
+  details: Record<string, unknown>;
+  status: FraudFlagStatus;
+  flagged_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+}
+
+interface FailedTradeEntry {
+  at: number;
+  tradeId: string;
+  reason: FailedTradeReason;
+}
+
+function positiveIntFromEnv(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function failedTradesKey(userId: string): string {
+  return `failed-trades:${userId}`;
+}
+
 export class FraudDetectionService {
   /**
    * Resolve velocity rule limits and windows based on action and env vars.
@@ -139,5 +194,156 @@ export class FraudDetectionService {
        ORDER BY violation_count DESC`
     );
     return rows;
+  }
+
+  // -------------------------------------------------------------------------
+  // Repeated failed trades (issue #491)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Threshold and rolling window for the failed-trade rule. Defaults to
+   * 5 failures within 1 hour; override with FAILED_TRADE_THRESHOLD and
+   * FAILED_TRADE_WINDOW_SECONDS.
+   */
+  static getFailedTradeRule(): FailedTradeRule {
+    return {
+      threshold: positiveIntFromEnv("FAILED_TRADE_THRESHOLD", 5),
+      windowSeconds: positiveIntFromEnv("FAILED_TRADE_WINDOW_SECONDS", 3600),
+    };
+  }
+
+  /**
+   * Records one failed trade attempt for a user and flags the account for
+   * admin review once `threshold` failures fall inside the rolling window.
+   *
+   * Failures older than the window are dropped on every call, so the count
+   * only ever reflects the last `windowSeconds`. A success in between clears
+   * the history entirely (see `resetFailedTrades`) — the rule targets
+   * *consecutive* failures.
+   */
+  static async recordFailedTrade(
+    userId: string,
+    tradeId: string,
+    reason: FailedTradeReason
+  ): Promise<FailedTradeOutcome> {
+    const rule = this.getFailedTradeRule();
+    const now = Date.now();
+    const windowStart = now - rule.windowSeconds * 1000;
+    const key = failedTradesKey(userId);
+
+    let history: FailedTradeEntry[] = [];
+    const raw = await cache.get(key);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) history = parsed as FailedTradeEntry[];
+      } catch {
+        // Corrupt entry — start a fresh window.
+      }
+    }
+
+    const recent = history.filter((entry) => entry.at > windowStart);
+    recent.push({ at: now, tradeId, reason });
+    await cache.set(key, JSON.stringify(recent), rule.windowSeconds);
+
+    if (recent.length < rule.threshold) {
+      return { failureCount: recent.length, flagged: false };
+    }
+
+    const flagged = await this.flagAccount(userId, REPEATED_FAILED_TRADES, {
+      threshold: rule.threshold,
+      windowSeconds: rule.windowSeconds,
+      failureCount: recent.length,
+      failures: recent.map((entry) => ({
+        tradeId: entry.tradeId,
+        reason: entry.reason,
+        at: new Date(entry.at).toISOString(),
+      })),
+    });
+
+    return { failureCount: recent.length, flagged };
+  }
+
+  /** Clears a user's failed-trade history after a successful trade. */
+  static async resetFailedTrades(userId: string): Promise<void> {
+    // The cache has no delete; an empty list with a 1s TTL is equivalent.
+    await cache.set(failedTradesKey(userId), "[]", 1);
+  }
+
+  /**
+   * Persists an open fraud flag. Returns false (and writes nothing) when the
+   * user already has an open flag for the same reason awaiting review.
+   */
+  static async flagAccount(
+    userId: string,
+    reasonCode: string,
+    details: Record<string, unknown>
+  ): Promise<boolean> {
+    const { rowCount } = await pool.query(
+      `INSERT INTO fraud_flags (user_id, reason_code, details)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, reason_code) WHERE status = 'open' DO NOTHING
+       RETURNING id`,
+      [userId, reasonCode, JSON.stringify(details)]
+    );
+
+    const created = (rowCount ?? 0) > 0;
+    if (created) {
+      logger.warn(
+        { userId, reasonCode, details },
+        `[FraudDetection] Account ${userId} flagged for review (${reasonCode})`
+      );
+    }
+    return created;
+  }
+
+  /** Lists fraud flags for the admin review queue, newest first. */
+  static async listFraudFlags(options: {
+    status?: FraudFlagStatus;
+    limit: number;
+    offset: number;
+  }): Promise<{ flags: FraudFlag[]; total: number }> {
+    const where = options.status ? "WHERE status = $1" : "";
+    const filterParams = options.status ? [options.status] : [];
+
+    const [{ rows: flags }, { rows: countRows }] = await Promise.all([
+      pool.query<FraudFlag>(
+        `SELECT id, user_id, reason_code, details, status, flagged_at,
+                reviewed_by, reviewed_at, review_note
+           FROM fraud_flags
+           ${where}
+          ORDER BY flagged_at DESC
+          LIMIT $${filterParams.length + 1} OFFSET $${filterParams.length + 2}`,
+        [...filterParams, options.limit, options.offset]
+      ),
+      pool.query<{ total: number }>(
+        `SELECT COUNT(*)::int AS total FROM fraud_flags ${where}`,
+        filterParams
+      ),
+    ]);
+
+    return { flags, total: countRows[0]?.total ?? 0 };
+  }
+
+  /**
+   * Closes an open flag as reviewed or dismissed, recording who did it, when,
+   * and an optional note. Returns null if the flag doesn't exist or was
+   * already closed.
+   */
+  static async reviewFraudFlag(
+    flagId: string,
+    reviewerId: string,
+    status: Exclude<FraudFlagStatus, "open">,
+    note: string | null
+  ): Promise<FraudFlag | null> {
+    const { rows } = await pool.query<FraudFlag>(
+      `UPDATE fraud_flags
+          SET status = $2, reviewed_by = $3, reviewed_at = NOW(), review_note = $4
+        WHERE id = $1 AND status = 'open'
+        RETURNING id, user_id, reason_code, details, status, flagged_at,
+                  reviewed_by, reviewed_at, review_note`,
+      [flagId, status, reviewerId, note]
+    );
+    return rows[0] ?? null;
   }
 }
