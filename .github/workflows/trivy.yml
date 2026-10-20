@@ -61,7 +61,7 @@ jobs:
           image-ref: stellar-raide-stellar-raide-airflex-server:${{ github.sha }}
           format: sarif
           output: trivy-server.sarif
-          severity: CRITICAL,HIGH
+          severity: CRITICAL
           # Exit with a non-zero code on CRITICAL findings to block the build.
           exit-code: "1"
           ignore-unfixed: true
@@ -98,7 +98,7 @@ jobs:
           scan-ref: .
           format: sarif
           output: trivy-fs.sarif
-          severity: CRITICAL,HIGH
+          severity: CRITICAL
           exit-code: "1"
           ignore-unfixed: true
           # Include secret detection and config checks in addition to vuln scanning

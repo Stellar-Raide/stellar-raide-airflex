@@ -13,10 +13,10 @@ WORKDIR /app
 
 # Copy dependency manifests first to leverage Docker layer caching.
 # node_modules are only re-installed when package files change.
-COPY package.json package-lock.json ./
+COPY package.json ./
 
 # Install all dependencies (including devDependencies needed for tsc)
-RUN npm ci
+RUN npm install --ignore-scripts
 
 # Copy the rest of the source
 COPY tsconfig.json ./
@@ -35,10 +35,10 @@ WORKDIR /app
 
 # Copy only the compiled output and production dependency manifests
 COPY --from=builder /app/dist ./dist
-COPY package.json package-lock.json ./
+COPY package.json ./
 
 # Install production dependencies only
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm install --omit=dev --ignore-scripts && npm cache clean --force
 
 # Switch to non-root user
 USER stellar-raide-stellar-raide-airflex
