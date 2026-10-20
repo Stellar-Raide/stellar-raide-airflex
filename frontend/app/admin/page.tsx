@@ -371,7 +371,7 @@ export default function AdminDashboardPage(): JSX.Element {
             </div>
           </div>
         )}
-      </section>
+      </Card>
 
       {/* ── Resolve modal ──────────────────────────────────────────────── */}
       {resolving && (

@@ -107,7 +107,7 @@ describe("manifest icons and theme (#462)", () => {
     expect(m.display).toBe("standalone");
     expect(m.name).toBeTruthy();
     expect(m.short_name).toBeTruthy();
-    expect(m.name.length).toBeGreaterThan(0);
-    expect(m.short_name.length).toBeGreaterThan(0);
+    expect(m.name!.length).toBeGreaterThan(0);
+    expect(m.short_name!.length).toBeGreaterThan(0);
   });
 });

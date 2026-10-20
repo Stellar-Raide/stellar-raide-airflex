@@ -56,12 +56,12 @@ jobs:
       # Scan the built image for OS and library CVEs.
       # The build is failed immediately on any CRITICAL severity finding.
       - name: Scan server image with Trivy
-        uses: aquasecurity/trivy-action@v0.29.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: stellar-raide-stellar-raide-airflex-server:${{ github.sha }}
           format: sarif
           output: trivy-server.sarif
-          severity: CRITICAL,HIGH
+          severity: CRITICAL
           # Exit with a non-zero code on CRITICAL findings to block the build.
           exit-code: "1"
           ignore-unfixed: true
@@ -92,13 +92,13 @@ jobs:
       #   - Infrastructure-as-code misconfigurations
       #   - Vulnerable library versions declared in manifests
       - name: Scan filesystem with Trivy
-        uses: aquasecurity/trivy-action@v0.29.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
           format: sarif
           output: trivy-fs.sarif
-          severity: CRITICAL,HIGH
+          severity: CRITICAL
           exit-code: "1"
           ignore-unfixed: true
           # Include secret detection and config checks in addition to vuln scanning

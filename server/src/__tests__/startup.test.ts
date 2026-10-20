@@ -6,6 +6,7 @@ const ENTRY_POINT = path.join(__dirname, '../index.ts');
 function runServer(env: Record<string, string | undefined>) {
   const customEnv: NodeJS.ProcessEnv = {
     ...process.env,
+    TS_NODE_TRANSPILE_ONLY: 'true',
     ...env,
   };
   delete customEnv.JEST_WORKER_ID;

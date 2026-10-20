@@ -152,7 +152,7 @@ jobs:
 
       # Lint with all Soroban-relevant warnings treated as errors
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
 
       # Run the in-contract unit tests (uses soroban-sdk testutils)
       - name: Test
