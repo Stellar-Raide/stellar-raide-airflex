@@ -62,7 +62,7 @@ router.post("/paystack", (req: Request, res: Response) => {
 
   const expected = crypto.createHmac("sha512", secret).update(raw).digest("hex");
   if (!signatureMatches(expected, signature)) {
-    res.status(400).json({ error: "Invalid signature" });
+    res.status(401).json({ error: "Invalid signature" });
     return;
   }
 
