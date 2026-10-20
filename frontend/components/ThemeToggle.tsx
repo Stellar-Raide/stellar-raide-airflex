@@ -14,12 +14,32 @@ import { useEffect, useState } from "react";
  * the current theme yet (it depends on localStorage / OS preference), so we
  * render nothing until the client has hydrated and resolved the real theme.
  */
-export default function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+export interface ThemeToggleProps {
+  /** Optional theme override for Storybook or isolated visual tests ("light" | "dark") */
+  currentTheme?: "light" | "dark";
+  /** Optional callback fired when the toggle button is clicked */
+  onToggle?: () => void;
+  /** Force mounted state for immediate rendering without waiting for SSR hydration */
+  forceMounted?: boolean;
+}
+
+export default function ThemeToggle({
+  currentTheme,
+  onToggle,
+  forceMounted = false,
+}: ThemeToggleProps = {}) {
+  const themeContext = useTheme();
+  const resolvedTheme = currentTheme ?? themeContext?.resolvedTheme;
+  const setTheme = themeContext?.setTheme;
+  const [mounted, setMounted] = useState(forceMounted);
 
   // Only show the button after client hydration to avoid SSR mismatch
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!forceMounted) {
+      setMounted(true);
+    }
+  }, [forceMounted]);
+
   if (!mounted) {
     // Reserve the same space as the button so layout doesn't shift
     return <span className="h-9 w-9 inline-block" aria-hidden="true" />;
@@ -28,7 +48,8 @@ export default function ThemeToggle() {
   const isDark = resolvedTheme === "dark";
 
   function toggle() {
-    setTheme(isDark ? "light" : "dark");
+    onToggle?.();
+    setTheme?.(isDark ? "light" : "dark");
   }
 
   return (

@@ -97,4 +97,24 @@ describe("Navbar Active Route Indicator (Issue #327)", () => {
     expect(desktopMarketplace).not.toHaveAttribute("aria-current");
     expect(desktopSell).not.toHaveAttribute("aria-current");
   });
+
+  it("renders authenticated state when initialAuthed and initialBalance are provided", () => {
+    render(
+      <Navbar
+        initialAuthed={true}
+        initialUser={{ phone: "+2348012345678" }}
+        initialBalance="1,250.00 XLM"
+      />
+    );
+
+    expect(screen.getAllByText("1,250.00 XLM")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("+234 *** 5678")[0]).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Log out" })[0]).toBeInTheDocument();
+  });
+
+  it("renders drawer open when initialDrawerOpen is true", () => {
+    render(<Navbar initialDrawerOpen={true} />);
+    const drawer = screen.getByRole("dialog", { name: "Navigation menu" });
+    expect(drawer.className).toContain("translate-x-0");
+  });
 });
