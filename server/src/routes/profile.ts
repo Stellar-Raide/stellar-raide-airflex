@@ -1,7 +1,9 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { createHash } from "crypto";
 import pool from "../db";
 import { authenticate, AuthenticatedRequest } from "../middleware/authenticate";
+import { validate } from "../middleware/validate";
+import { profileUpdateSchema, type ProfileUpdateInput } from "../schemas";
 import { QueueService } from "../jobs";
 import type { TradeOffer, TradeStatus } from "../types/trade";
 import logger from "../utils/logger";
@@ -137,6 +139,98 @@ router.get(
     });
   }
 );
+
+// ---------------------------------------------------------------------------
+// PATCH /api/v1/profile (and PUT /api/v1/profile)  (authenticated)
+// ---------------------------------------------------------------------------
+
+/**
+ * Updates profile settings for the authenticated user.
+ * Validates request body using Zod profileUpdateSchema.
+ */
+async function handleUpdateProfile(req: Request, res: Response): Promise<void> {
+  const { sub: userId } = (req as AuthenticatedRequest).user;
+  const updates = req.body as ProfileUpdateInput;
+
+  const fields: string[] = [];
+  const values: unknown[] = [];
+
+  const handle = updates.displayHandle ?? updates.alias;
+  if (handle !== undefined) {
+    fields.push(`display_handle = $${values.length + 1}`);
+    values.push(handle);
+  }
+
+  if (updates.notificationsEnabled !== undefined) {
+    fields.push(`opt_out_notifications = $${values.length + 1}`);
+    values.push(!updates.notificationsEnabled);
+  } else if (updates.optOutNotifications !== undefined) {
+    fields.push(`opt_out_notifications = $${values.length + 1}`);
+    values.push(updates.optOutNotifications);
+  }
+
+  if (updates.stellarPublicKey !== undefined) {
+    fields.push(`stellar_public_key = $${values.length + 1}`);
+    values.push(updates.stellarPublicKey);
+  }
+
+  if (updates.virtualAccountNumber !== undefined) {
+    fields.push(`virtual_account_number = $${values.length + 1}`);
+    values.push(updates.virtualAccountNumber);
+  }
+
+  if (updates.virtualBankName !== undefined) {
+    fields.push(`virtual_bank_name = $${values.length + 1}`);
+    values.push(updates.virtualBankName);
+  }
+
+  if (fields.length === 0) {
+    res.status(400).json({ error: "At least one profile field is required" });
+    return;
+  }
+
+  values.push(userId);
+  const { rows } = await pool.query<{
+    id: string;
+    display_handle: string | null;
+    stellar_public_key: string | null;
+    opt_out_notifications: boolean;
+    virtual_account_number: string | null;
+    virtual_bank_name: string | null;
+    updated_at: string;
+  }>(
+    `UPDATE users
+     SET ${fields.join(", ")}, updated_at = NOW()
+     WHERE id = $${values.length}
+     RETURNING id, display_handle, stellar_public_key, opt_out_notifications,
+               virtual_account_number, virtual_bank_name, updated_at`,
+    values
+  );
+
+  if (!rows.length) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const updatedUser = rows[0]!;
+  res.status(200).json({
+    data: {
+      id: updatedUser.id,
+      displayHandle: updatedUser.display_handle ?? "",
+      alias: updatedUser.display_handle ?? "",
+      stellarPublicKey: updatedUser.stellar_public_key ?? "",
+      notificationsEnabled: !updatedUser.opt_out_notifications,
+      optOutNotifications: updatedUser.opt_out_notifications,
+      virtualAccountNumber: updatedUser.virtual_account_number ?? "",
+      virtualBankName: updatedUser.virtual_bank_name ?? "",
+      updatedAt: updatedUser.updated_at,
+    },
+  });
+}
+
+router.patch("/", authenticate, validate(profileUpdateSchema, 400), handleUpdateProfile);
+router.put("/", authenticate, validate(profileUpdateSchema, 400), handleUpdateProfile);
+
 
 // ---------------------------------------------------------------------------
 // GET /api/v1/profile/trades  (authenticated)
