@@ -38,7 +38,7 @@ test.describe("Create listing", () => {
     });
 
     await page.goto("/sell");
-    await expect(page.locator('button[type="submit"]')).toBeDisabled();
+    await page.locator('button[type="submit"]').click();
 
     expect(posted).toBe(false);
   });

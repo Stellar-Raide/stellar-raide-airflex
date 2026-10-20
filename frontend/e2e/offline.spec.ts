@@ -23,14 +23,14 @@ import { expect, test } from "@playwright/test";
 test.describe("Offline page", () => {
   test("redirects to / automatically when network is restored", async ({
     page,
+    context,
   }) => {
-    await page.addInitScript(() => {
-      Object.defineProperty(navigator, "onLine", {
-        get: () => false,
-        configurable: true,
-      });
-    });
+    // 1. Go offline before loading the page so the `online` check on mount
+    //    does not immediately redirect (we want to test the event listener path).
+    await context.setOffline(true);
 
+    // 2. Navigate to /offline. In production the service worker delivers this
+    //    page; in the test environment we hit it directly.
     await page.goto("/offline", { waitUntil: "domcontentloaded" });
 
     // 3. The offline state indicator should be visible.
@@ -39,13 +39,7 @@ test.describe("Offline page", () => {
     ).toBeVisible();
 
     // 4. Restore network connectivity — this fires `window.online`.
-    await page.evaluate(() => {
-      Object.defineProperty(navigator, "onLine", {
-        get: () => true,
-        configurable: true,
-      });
-      window.dispatchEvent(new Event("online"));
-    });
+    await context.setOffline(false);
 
     // 5. The page should first show the "Reconnecting…" state …
     await expect(
@@ -59,41 +53,24 @@ test.describe("Offline page", () => {
 
   test("shows Reconnecting spinner with accessible label", async ({
     page,
+    context,
   }) => {
-    await page.addInitScript(() => {
-      Object.defineProperty(navigator, "onLine", {
-        get: () => false,
-        configurable: true,
-      });
-    });
-
+    await context.setOffline(true);
     await page.goto("/offline", { waitUntil: "domcontentloaded" });
 
     // Confirm the spinner is NOT present while still offline.
     await expect(page.getByRole("status")).not.toBeVisible();
 
     // Restore network — spinner should appear.
-    await page.evaluate(() => {
-      Object.defineProperty(navigator, "onLine", {
-        get: () => true,
-        configurable: true,
-      });
-      window.dispatchEvent(new Event("online"));
-    });
+    await context.setOffline(false);
 
     const spinner = page.getByRole("status");
     await expect(spinner).toBeVisible({ timeout: 5_000 });
     await expect(spinner).toHaveAttribute("aria-label", "Reconnecting…");
   });
 
-  test("Retry link is present while offline", async ({ page }) => {
-    await page.addInitScript(() => {
-      Object.defineProperty(navigator, "onLine", {
-        get: () => false,
-        configurable: true,
-      });
-    });
-
+  test("Retry link is present while offline", async ({ page, context }) => {
+    await context.setOffline(true);
     await page.goto("/offline", { waitUntil: "domcontentloaded" });
 
     // The manual Retry link should always be available as a fallback.
