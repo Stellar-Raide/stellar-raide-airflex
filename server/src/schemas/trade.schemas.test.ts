@@ -63,9 +63,9 @@ describe("createTradeSchema", () => {
     expect(createTradeSchema.safeParse({ ...valid, expiresInHours: 168 }).success).toBe(true);
   });
 
-  it("accepts alphanumeric assetType with underscores and hyphens", () => {
+  it("accepts valid allowlisted assetType", () => {
     expect(
-      createTradeSchema.safeParse({ ...valid, assetType: "9MOBILE_DATA-PLAN" }).success
+      createTradeSchema.safeParse({ ...valid, assetType: "9MOBILE_DATA" }).success
     ).toBe(true);
   });
 

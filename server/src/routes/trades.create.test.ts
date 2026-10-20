@@ -229,6 +229,7 @@ describe("POST /api/v1/trades — explicit stroop handling (issue #292)", () => 
     expect(mockCreateListing).toHaveBeenCalledTimes(1);
 
     // Second request with the same idempotency key — should return cached 201 without calling createListing
+    mockQuery.mockResolvedValueOnce({ rows: [{ token_version: 1 }] });
     const res2 = await request(app)
       .post("/api/v1/trades")
       .set("Authorization", `Bearer ${sellerToken}`)

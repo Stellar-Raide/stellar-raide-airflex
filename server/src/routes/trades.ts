@@ -56,24 +56,37 @@ router.get(
       return;
     }
 
-    const { page, limit, assetType: assetTypeFilter } = parsed.data;
+    const { page, limit, assetType, carrier, minAmount, maxAmount } = parsed.data;
     const offset = (page - 1) * limit;
 
-    // Build WHERE clause — assetType filter is optional
-    const params: (number | string)[] = [];
-    let assetTypeClause = "";
-    if (assetTypeFilter) {
-      params.push(assetTypeFilter);
-      assetTypeClause = `AND t.asset_type = $${params.length}`;
+    const whereConditions: string[] = ["t.status = 'Active'", "t.expires_at > NOW()"];
+    const queryParams: unknown[] = [];
+
+    if (carrier && carrier.trim()) {
+      queryParams.push(`${carrier.trim().toUpperCase()}%`);
+      whereConditions.push(`t.asset_type ILIKE $${queryParams.length}`);
     }
 
-    // Join ratings on reviewee_display_id so the count survives account
-    // anonymisation (issue #362).  The display_id is captured at rating
-    // creation time and is never modified by the anonymisation job, unlike
-    // the raw UUID which becomes a dangling reference once PII is scrubbed.
-    params.push(limit, offset);
-    const limitIdx = params.length - 1;
-    const offsetIdx = params.length;
+    if (assetType && assetType.trim()) {
+      queryParams.push(`%${assetType.trim().toUpperCase()}%`);
+      whereConditions.push(`t.asset_type ILIKE $${queryParams.length}`);
+    }
+
+    if (minAmount !== undefined && !isNaN(minAmount)) {
+      queryParams.push(minAmount);
+      whereConditions.push(`t.amount >= $${queryParams.length}`);
+    }
+
+    if (maxAmount !== undefined && !isNaN(maxAmount)) {
+      queryParams.push(maxAmount);
+      whereConditions.push(`t.amount <= $${queryParams.length}`);
+    }
+
+    const whereClause = whereConditions.join(" AND ");
+
+    const limitIndex = queryParams.length + 1;
+    const offsetIndex = queryParams.length + 2;
+    const selectParams = [...queryParams, limit, offset];
 
     const { rows: trades } = await pool.query<
       PublicTradeOffer & {
@@ -103,23 +116,16 @@ router.get(
          FROM ratings
          WHERE reviewee_display_id = t.seller_id::text
        ) sr ON TRUE
-       WHERE t.status = 'Active' AND t.expires_at > NOW() ${assetTypeClause}
+       WHERE ${whereClause}
        ORDER BY t.created_at DESC
-       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-      params
+       LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
+      selectParams
     );
 
-    const countParams: (string)[] = [];
-    let countAssetClause = "";
-    if (assetTypeFilter) {
-      countParams.push(assetTypeFilter);
-      countAssetClause = `AND asset_type = $1`;
-    }
-
     const { rows: countRows } = await pool.query<{ count: string }>(
-      `SELECT COUNT(*) FROM trade_offers
-       WHERE status = 'Active' AND expires_at > NOW() ${countAssetClause}`,
-      countParams
+      `SELECT COUNT(*) FROM trade_offers t
+       WHERE ${whereClause}`,
+      queryParams
     );
 
     const total = parseInt(countRows[0]?.count ?? "0", 10);

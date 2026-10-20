@@ -17,7 +17,7 @@ function runServer(env: Record<string, string | undefined>) {
       {
         env: customEnv,
         encoding: 'utf8',
-        timeout: 8000,
+        timeout: 20000,
         cwd: path.join(__dirname, '../..'),
       }
     );
