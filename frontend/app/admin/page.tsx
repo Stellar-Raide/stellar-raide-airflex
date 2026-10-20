@@ -24,7 +24,8 @@ import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { Modal } from "../../components/ui/Modal";
 import { StellarExplorerLink } from "../../components/StellarExplorerLink";
-import { AuthGuard } from "../components/AuthGuard";
+import { Table, THead, TBody, TR, TH, TD } from "../../components/ui/Table";
+import AuthGuard from "../components/AuthGuard";
 
 interface Metrics {
   totalUsers: number;
@@ -177,14 +178,14 @@ export default function AdminDashboardPage(): JSX.Element {
     <AuthGuard role="admin">
       <main className="mx-auto max-w-6xl px-4 py-10">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold text-white">Admin Dashboard</h1>
-        <p className="mt-1 text-sm text-zinc-400">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Admin Dashboard</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           Platform metrics, dispute resolution, and account lookup.
         </p>
       </header>
 
       {loadError && (
-        <p className="mb-6 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
+        <p className="mb-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
           {loadError}
         </p>
       )}
@@ -204,49 +205,46 @@ export default function AdminDashboardPage(): JSX.Element {
               }),
             },
           ].map((stat) => (
-            <Card
-              key={stat.label}
-              className="border-white/10 bg-white/5 p-4"
-            >
-              <p className="text-xs uppercase tracking-wide text-zinc-400">{stat.label}</p>
-              <p className="mt-1 text-2xl font-semibold text-white">{stat.value}</p>
+            <Card key={stat.label} className="p-4">
+              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{stat.label}</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{stat.value}</p>
             </Card>
           ))}
         </section>
       )}
 
       {/* ── Disputed trades ────────────────────────────────────────────── */}
-      <section className="mb-10 rounded-xl border border-white/10 bg-white/5 p-5">
-        <h2 className="mb-4 text-lg font-semibold text-white">
+      <Card className="mb-10 p-5">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-gray-100">
           Disputed trades{disputed.length > 0 ? ` (${disputed.length})` : ""}
         </h2>
 
         {disputed.length === 0 ? (
-          <p className="text-sm text-zinc-500">No trades are currently disputed.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">No trades are currently disputed.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="text-xs uppercase tracking-wide text-zinc-500">
-                <tr>
-                  <th className="pb-2 font-medium">Trade</th>
-                  <th className="pb-2 font-medium">Buyer</th>
-                  <th className="pb-2 font-medium">Seller</th>
-                  <th className="pb-2 font-medium">Amount</th>
-                  <th className="pb-2 font-medium">Opened</th>
-                  <th className="pb-2 font-medium" />
-                </tr>
-              </thead>
-              <tbody className="text-zinc-300">
+            <Table caption="Disputed trades" className="min-w-[640px]">
+              <THead>
+                <TR className="hover:bg-transparent dark:hover:bg-transparent">
+                  <TH>Trade</TH>
+                  <TH>Buyer</TH>
+                  <TH>Seller</TH>
+                  <TH>Amount</TH>
+                  <TH>Opened</TH>
+                  <TH />
+                </TR>
+              </THead>
+              <TBody>
                 {disputed.map((trade) => (
-                  <tr key={trade.id} className="border-t border-white/5">
-                    <td className="py-2 font-mono text-xs">{trade.id.slice(0, 8)}…</td>
-                    <td className="py-2">{trade.buyer_phone ?? "—"}</td>
-                    <td className="py-2">{trade.seller_phone ?? "—"}</td>
-                    <td className="py-2">{trade.amount}</td>
-                    <td className="py-2 text-xs text-zinc-500">
+                  <TR key={trade.id}>
+                    <TD className="font-mono text-xs">{trade.id.slice(0, 8)}…</TD>
+                    <TD>{trade.buyer_phone ?? "—"}</TD>
+                    <TD>{trade.seller_phone ?? "—"}</TD>
+                    <TD>{trade.amount}</TD>
+                    <TD className="text-xs text-gray-500 dark:text-gray-400">
                       {new Date(trade.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="py-2 text-right">
+                    </TD>
+                    <TD className="text-right">
                       <Button
                         size="sm"
                         variant="secondary"
@@ -258,52 +256,52 @@ export default function AdminDashboardPage(): JSX.Element {
                       >
                         Resolve
                       </Button>
-                    </td>
-                  </tr>
+                    </TD>
+                  </TR>
                 ))}
-              </tbody>
-            </table>
+              </TBody>
+            </Table>
           </div>
         )}
-      </section>
+      </Card>
 
       {/* ── Flagged Accounts ────────────────────────────────────────────── */}
-      <section className="mb-10 rounded-xl border border-red-500/20 bg-red-950/10 p-5">
-        <h2 className="mb-4 text-lg font-semibold text-red-200">
+      <Card className="mb-10 border-red-200 p-5 dark:border-red-900/50">
+        <h2 className="mb-4 text-lg font-semibold text-red-700 dark:text-red-300">
           Flagged Accounts{flaggedAccounts.length > 0 ? ` (${flaggedAccounts.length})` : ""}
         </h2>
 
         {flaggedAccounts.length === 0 ? (
-          <p className="text-sm text-zinc-500">No flagged accounts with high velocity violations in the last 24 hours.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">No flagged accounts with high velocity violations in the last 24 hours.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="text-xs uppercase tracking-wide text-red-400/70">
-                <tr>
-                  <th className="pb-2 font-medium">User ID</th>
-                  <th className="pb-2 font-medium">Violations (24h)</th>
-                  <th className="pb-2 font-medium">Last Violation</th>
-                </tr>
-              </thead>
-              <tbody className="text-zinc-300">
+            <Table caption="Flagged accounts" className="min-w-[640px]">
+              <THead>
+                <TR className="hover:bg-transparent dark:hover:bg-transparent">
+                  <TH>User ID</TH>
+                  <TH>Violations (24h)</TH>
+                  <TH>Last Violation</TH>
+                </TR>
+              </THead>
+              <TBody>
                 {flaggedAccounts.map((account) => (
-                  <tr key={account.user_id} className="border-t border-white/5">
-                    <td className="py-2 font-mono text-xs text-red-300">{account.user_id}</td>
-                    <td className="py-2 text-sm font-bold text-red-400">{account.violation_count}</td>
-                    <td className="py-2 text-xs text-zinc-400">
+                  <TR key={account.user_id}>
+                    <TD className="font-mono text-xs text-red-600 dark:text-red-400">{account.user_id}</TD>
+                    <TD className="text-sm font-bold text-red-600 dark:text-red-400">{account.violation_count}</TD>
+                    <TD className="text-xs text-gray-500 dark:text-gray-400">
                       {new Date(account.last_violation_at).toLocaleString()}
-                    </td>
-                  </tr>
+                    </TD>
+                  </TR>
                 ))}
-              </tbody>
-            </table>
+              </TBody>
+            </Table>
           </div>
         )}
-      </section>
+      </Card>
 
       {/* ── User lookup ────────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-white/10 bg-white/5 p-5">
-        <h2 className="mb-3 text-lg font-semibold text-white">User lookup</h2>
+      <Card className="p-5">
+        <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-gray-100">User lookup</h2>
 
         <div className="flex flex-wrap gap-2">
           <input
@@ -313,30 +311,30 @@ export default function AdminDashboardPage(): JSX.Element {
               if (e.key === "Enter") void searchUser();
             }}
             placeholder="Phone number (exact match)"
-            className="flex-1 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+            className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
           />
           <button
             type="button"
             onClick={() => void searchUser()}
-            className="rounded-lg bg-white/10 px-4 py-2 text-sm text-zinc-100 hover:bg-white/20"
+            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
           >
             Search
           </button>
         </div>
 
-        {lookupError && <p className="mt-3 text-sm text-red-300">{lookupError}</p>}
+        {lookupError && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{lookupError}</p>}
 
         {lookup && (
           <div className="mt-5 space-y-4">
             <dl className="grid grid-cols-[130px_1fr] gap-y-1 text-sm">
-              <dt className="text-zinc-500">Phone</dt>
-              <dd className="text-zinc-200">{lookup.user.phone}</dd>
-              <dt className="text-zinc-500">Role</dt>
-              <dd className="text-zinc-200">{lookup.user.role}</dd>
-              <dt className="text-zinc-500">Fiat balance</dt>
-              <dd className="text-zinc-200">{lookup.user.fiat_balance ?? "0.00"}</dd>
-              <dt className="text-zinc-500">Stellar key</dt>
-              <dd className="truncate font-mono text-xs text-zinc-400">
+              <dt className="text-gray-500 dark:text-gray-400">Phone</dt>
+              <dd className="text-gray-900 dark:text-gray-100">{lookup.user.phone}</dd>
+              <dt className="text-gray-500 dark:text-gray-400">Role</dt>
+              <dd className="text-gray-900 dark:text-gray-100">{lookup.user.role}</dd>
+              <dt className="text-gray-500 dark:text-gray-400">Fiat balance</dt>
+              <dd className="text-gray-900 dark:text-gray-100">{lookup.user.fiat_balance ?? "0.00"}</dd>
+              <dt className="text-gray-500 dark:text-gray-400">Stellar key</dt>
+              <dd className="truncate font-mono text-xs text-gray-600 dark:text-gray-400">
                 {lookup.user.stellar_public_key ? (
                   <StellarExplorerLink
                     type="account"
@@ -350,17 +348,17 @@ export default function AdminDashboardPage(): JSX.Element {
             </dl>
 
             <div>
-              <h3 className="mb-2 text-sm font-medium text-zinc-300">
+              <h3 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
                 Trade history ({lookup.trades.length})
               </h3>
               {lookup.trades.length === 0 ? (
-                <p className="text-xs text-zinc-500">No trades.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">No trades.</p>
               ) : (
                 <ul className="space-y-1 text-xs">
                   {lookup.trades.map((t) => (
                     <li
                       key={t.id}
-                      className="flex justify-between rounded border border-white/5 px-3 py-1.5 text-zinc-400"
+                      className="flex justify-between rounded border border-gray-200 px-3 py-1.5 text-gray-600 dark:border-gray-700 dark:text-gray-400"
                     >
                       <span className="font-mono">{t.id.slice(0, 8)}…</span>
                       <span>{t.status}</span>
@@ -383,11 +381,11 @@ export default function AdminDashboardPage(): JSX.Element {
           aria-modal="true"
           aria-labelledby="resolve-title"
         >
-          <div className="w-full max-w-md rounded-xl border border-white/10 bg-zinc-950 p-5">
-            <h3 id="resolve-title" className="text-lg font-semibold text-white">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+            <h3 id="resolve-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Resolve trade {resolving.id.slice(0, 8)}…
             </h3>
-            <p className="mt-1 text-xs text-zinc-400">
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               This moves funds and cannot be undone from here. Both parties are
               notified immediately.
             </p>
@@ -404,8 +402,8 @@ export default function AdminDashboardPage(): JSX.Element {
                   key={value}
                   className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
                     resolution === value
-                      ? "border-emerald-400/50 bg-emerald-500/10"
-                      : "border-white/10 hover:bg-white/5"
+                      ? "border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20"
+                      : "border-gray-200 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700/40"
                   }`}
                 >
                   <input
@@ -417,15 +415,15 @@ export default function AdminDashboardPage(): JSX.Element {
                     className="mt-0.5"
                   />
                   <span>
-                    <span className="block text-sm text-zinc-100">{label}</span>
-                    <span className="block text-xs text-zinc-500">{hint}</span>
+                    <span className="block text-sm text-gray-900 dark:text-gray-100">{label}</span>
+                    <span className="block text-xs text-gray-500 dark:text-gray-400">{hint}</span>
                   </span>
                 </label>
               ))}
             </fieldset>
 
             {resolveError && (
-              <p className="mt-3 rounded border border-red-400/30 bg-red-500/10 p-2 text-xs text-red-200">
+              <p className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
                 {resolveError}
               </p>
             )}
@@ -435,7 +433,7 @@ export default function AdminDashboardPage(): JSX.Element {
                 type="button"
                 onClick={() => setResolving(null)}
                 disabled={submitting}
-                className="rounded-lg border border-white/15 px-4 py-2 text-sm text-zinc-300"
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
               >
                 Cancel
               </button>
@@ -443,7 +441,7 @@ export default function AdminDashboardPage(): JSX.Element {
                 type="button"
                 onClick={() => void submitResolution()}
                 disabled={submitting}
-                className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 disabled:opacity-50"
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 {submitting ? "Resolving…" : "Confirm"}
               </button>
