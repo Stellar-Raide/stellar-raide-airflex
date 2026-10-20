@@ -23,10 +23,12 @@ pub enum DataKey {
     TradeFillCounter(u64),
     SubEscrow(u64, u64),
     AllowedCategory(Symbol),
+    DisputeWindowCloseAt(u64),
 }
 
 pub const EMERGENCY_TIMELOCK_SECS: u64 = 72 * 60 * 60; // 72 hours = 259,200 seconds
 pub const MAX_EXPIRY_SECS: u64 = 30 * 24 * 60 * 60; // 30 days = 2,592,000 seconds
+pub const DISPUTE_WINDOW_SECS: u64 = 24 * 60 * 60; // 24 hours = 86,400 seconds
 
 // ---------------------------------------------------------------------------
 // Types
@@ -553,6 +555,17 @@ impl EscrowContract {
             .persistent()
             .set(&DataKey::SubEscrow(trade_id, fill_id), &sub_escrow);
 
+        // Record dispute window close deadline (Issue #504)
+        let window_close = now.saturating_add(DISPUTE_WINDOW_SECS);
+        env.storage()
+            .persistent()
+            .set(&DataKey::DisputeWindowCloseAt(trade_id), &window_close);
+        env.storage().persistent().extend_ttl(
+            &DataKey::DisputeWindowCloseAt(trade_id),
+            17_280,
+            17_280 * 30,
+        );
+
         env.events().publish((topic_locked(),), (trade_id, buyer));
         Ok(())
     }
@@ -580,6 +593,122 @@ impl EscrowContract {
 
         if trade.status != TradeStatus::Locked && trade.status != TradeStatus::PartiallyFilled {
             return Err(ContractError::WrongStatus);
+        }
+
+        let mut sub_escrow: SubEscrow = env
+            .storage()
+            .persistent()
+            .get(&DataKey::SubEscrow(trade_id, fill_id))
+            .ok_or(ContractError::TradeNotFound)?;
+
+        if sub_escrow.released || sub_escrow.refunded {
+            return Err(ContractError::FillAlreadyProcessed);
+        }
+
+        let token_client = token::Client::new(&env, &trade.token);
+        token_client.transfer(
+            &env.current_contract_address(),
+            &trade.seller,
+            &sub_escrow.amount,
+        );
+
+        sub_escrow.released = true;
+        env.storage()
+            .persistent()
+            .set(&DataKey::SubEscrow(trade_id, fill_id), &sub_escrow);
+
+        let mut completed = false;
+        if trade.filled_amount == trade.total_amount {
+            let fill_count = env
+                .storage()
+                .instance()
+                .get(&DataKey::TradeFillCounter(trade_id))
+                .unwrap_or(0);
+            let mut all_released = true;
+            for i in 1..=fill_count {
+                if let Some(sub) = env
+                    .storage()
+                    .persistent()
+                    .get::<_, SubEscrow>(&DataKey::SubEscrow(trade_id, i))
+                {
+                    if !sub.released && !sub.refunded {
+                        all_released = false;
+                        break;
+                    }
+                }
+            }
+            if all_released {
+                trade.status = TradeStatus::Completed;
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::Trade(trade_id), &trade);
+                completed = true;
+            }
+        }
+
+        env.events().publish(
+            (topic_released(),),
+            (trade_id, fill_id, trade.seller.clone()),
+        );
+
+        if completed {
+            env.events()
+                .publish((topic_completed(),), (trade_id, trade.seller.clone()));
+        }
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // release_by_timelock — called after dispute window elapses (Issue #504)
+    // -----------------------------------------------------------------------
+
+    /// Releases escrowed funds to the seller after the dispute window has elapsed
+    /// without a dispute being flagged.
+    ///
+    /// Requirements:
+    /// - Contract must not be paused.
+    /// - `caller` must be the seller or admin.
+    /// - The trade must not be in `Disputed` status (returns `Err(ContractError::AlreadyDisputed)`).
+    /// - The trade must be in `Locked` or `PartiallyFilled` status.
+    /// - Current ledger timestamp must be >= `dispute_window_close_at` (returns `Err(ContractError::TimelockNotExpired)`).
+    /// - The specified `fill_id` must not be already released or refunded.
+    pub fn release_by_timelock(
+        env: Env,
+        caller: Address,
+        trade_id: u64,
+        fill_id: u64,
+    ) -> Result<(), ContractError> {
+        require_not_paused(&env)?;
+        caller.require_auth();
+
+        let mut trade: TradeOffer = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Trade(trade_id))
+            .ok_or(ContractError::TradeNotFound)?;
+
+        let admin = get_admin(&env)?;
+        if caller != trade.seller && caller != admin {
+            return Err(ContractError::Unauthorized);
+        }
+
+        if trade.status == TradeStatus::Disputed {
+            return Err(ContractError::AlreadyDisputed);
+        }
+
+        if trade.status != TradeStatus::Locked && trade.status != TradeStatus::PartiallyFilled {
+            return Err(ContractError::WrongStatus);
+        }
+
+        let window_close: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::DisputeWindowCloseAt(trade_id))
+            .ok_or(ContractError::TradeNotFound)?;
+
+        let now = env.ledger().timestamp();
+        if now < window_close {
+            return Err(ContractError::TimelockNotExpired);
         }
 
         let mut sub_escrow: SubEscrow = env
@@ -942,6 +1071,14 @@ impl EscrowContract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false)
+    }
+
+    /// Returns the Unix timestamp when the dispute window closes for `trade_id`.
+    pub fn get_dispute_window_close_at(env: Env, trade_id: u64) -> Result<u64, ContractError> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::DisputeWindowCloseAt(trade_id))
+            .ok_or(ContractError::TradeNotFound)
     }
 }
 
@@ -2003,10 +2140,10 @@ mod test {
 
         let has_released = all_events
             .iter()
-            .any(|e| e.1.iter().any(|t| t == released_symbol.to_val()));
+            .any(|e| e.1.iter().any(|t| t.shallow_eq(&released_symbol.to_val())));
         let has_completed = all_events
             .iter()
-            .any(|e| e.1.iter().any(|t| t == completed_symbol.to_val()));
+            .any(|e| e.1.iter().any(|t| t.shallow_eq(&completed_symbol.to_val())));
 
         assert!(has_released, "Event topic 'released' should be published");
         assert!(
@@ -2022,11 +2159,123 @@ mod test {
         let all_events_after = env.events().all();
         let has_completed_final = all_events_after
             .iter()
-            .any(|e| e.1.iter().any(|t| t == completed_symbol.to_val()));
+            .any(|e| e.1.iter().any(|t| t.shallow_eq(&completed_symbol.to_val())));
         assert!(
             has_completed_final,
             "Event topic 'completed' should be published on trade completion"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Escrow Release Timelock After Dispute Window (Issue #504)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_release_by_timelock_blocked_before_window_closes() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
+
+        let window_close = client.get_dispute_window_close_at(&trade_id);
+        assert_eq!(window_close, 1_000_000 + DISPUTE_WINDOW_SECS);
+
+        // Advance time partially (only 1 hour into 24-hour dispute window)
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000 + 3600);
+
+        // Seller attempts early self-release before dispute window expires
+        let result = client.try_release_by_timelock(&seller, &trade_id, &1);
+        assert_eq!(result, Err(Ok(ContractError::TimelockNotExpired)));
+    }
+
+    #[test]
+    fn test_release_by_timelock_succeeds_after_window_elapses() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
+
+        // Advance ledger time past the dispute window
+        env.ledger()
+            .with_mut(|l| l.timestamp = 1_000_000 + DISPUTE_WINDOW_SECS + 1);
+
+        // Beneficiary (seller) self-releases funds
+        let token_client = token::Client::new(&env, &token);
+        let seller_balance_before = token_client.balance(&seller);
+
+        client.release_by_timelock(&seller, &trade_id, &1);
+
+        let seller_balance_after = token_client.balance(&seller);
+        assert_eq!(
+            seller_balance_after - seller_balance_before,
+            500_0000000i128
+        );
+
+        let trade = client.get_trade(&trade_id);
+        assert_eq!(trade.status, TradeStatus::Completed);
+    }
+
+    #[test]
+    fn test_release_by_timelock_blocked_during_open_dispute() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
+
+        // Buyer flags dispute within dispute window
+        client.flag_dispute(&buyer, &trade_id);
+        assert_eq!(client.get_trade(&trade_id).status, TradeStatus::Disputed);
+
+        // Even after dispute window timestamp has passed...
+        env.ledger()
+            .with_mut(|l| l.timestamp = 1_000_000 + DISPUTE_WINDOW_SECS + 3600);
+
+        // Release must be blocked because dispute is open
+        let result = client.try_release_by_timelock(&seller, &trade_id, &1);
+        assert_eq!(result, Err(Ok(ContractError::AlreadyDisputed)));
+    }
+
+    #[test]
+    fn test_release_by_timelock_unauthorized_caller_rejected() {
+        let (env, client, _admin, seller, buyer, token) = setup();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let trade_id = client.create_listing(
+            &seller,
+            &token,
+            &500_0000000i128,
+            &symbol_short!("AIRTIME"),
+            &(1_000_000 + 86_400),
+        );
+        client.deposit_to_escrow(&buyer, &trade_id, &500_0000000i128);
+
+        env.ledger()
+            .with_mut(|l| l.timestamp = 1_000_000 + DISPUTE_WINDOW_SECS + 1);
+
+        let stranger = Address::generate(&env);
+        let result = client.try_release_by_timelock(&stranger, &trade_id, &1);
+        assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
     }
 }
 
@@ -2313,7 +2562,10 @@ mod fuzz {
 
     #[test]
     fn test_err_buyer_cannot_dispute_partially_filled_trade() {
-        let (env, client, _admin, seller, buyer, token) = setup();
+        let (env, client, _admin, seller, token) = setup();
+        let buyer = Address::generate(&env);
+        let sac = StellarAssetClient::new(&env, &token);
+        sac.mint(&buyer, &100_000_000_000i128);
         let trade_id = partially_filled_trade(&env, &client, &seller, &buyer, &token);
 
         let result = client.try_flag_dispute(&buyer, &trade_id);
@@ -2326,7 +2578,10 @@ mod fuzz {
 
     #[test]
     fn test_err_seller_cannot_dispute_partially_filled_trade() {
-        let (env, client, _admin, seller, buyer, token) = setup();
+        let (env, client, _admin, seller, token) = setup();
+        let buyer = Address::generate(&env);
+        let sac = StellarAssetClient::new(&env, &token);
+        sac.mint(&buyer, &100_000_000_000i128);
         let trade_id = partially_filled_trade(&env, &client, &seller, &buyer, &token);
 
         let result = client.try_flag_dispute(&seller, &trade_id);
@@ -2335,7 +2590,7 @@ mod fuzz {
 
     #[test]
     fn test_err_cannot_dispute_open_trade() {
-        let (env, client, _admin, seller, _buyer, token) = setup();
+        let (env, client, _admin, seller, token) = setup();
         env.ledger().with_mut(|l| l.timestamp = 1_000_000);
         let trade_id = client.create_listing(
             &seller,
@@ -2351,10 +2606,15 @@ mod fuzz {
 
     #[test]
     fn test_dispute_allowed_once_partial_fill_is_locked() {
-        let (env, client, _admin, seller, buyer, token) = setup();
+        let (env, client, _admin, seller, token) = setup();
+        let buyer = Address::generate(&env);
+        let buyer2 = Address::generate(&env);
+        let sac = StellarAssetClient::new(&env, &token);
+        sac.mint(&buyer, &100_000_000_000i128);
+        sac.mint(&buyer2, &100_000_000_000i128);
         let trade_id = partially_filled_trade(&env, &client, &seller, &buyer, &token);
 
-        client.deposit_to_escrow(&buyer, &trade_id, &(500_0000000i128 - 1));
+        client.deposit_to_escrow(&buyer2, &trade_id, &(500_0000000i128 - 1));
         assert_eq!(client.get_trade(&trade_id).status, TradeStatus::Locked);
 
         client.flag_dispute(&buyer, &trade_id);
