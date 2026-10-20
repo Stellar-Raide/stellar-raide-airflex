@@ -186,3 +186,18 @@ export async function mockCreateListing(page: Page, tradeId = TEST_TRADE.id) {
     return json(route, { data: { ...TEST_TRADE, id: tradeId } }, 201);
   });
 }
+
+/** Stub user profile. */
+export async function mockProfile(page: Page, profile: Record<string, unknown> = {}) {
+  await page.route(`${API_URL}/api/v1/profile**`, (route) =>
+    json(route, {
+      data: {
+        id: "user_e2e",
+        phone: "+2348000000000",
+        role: "user",
+        kycStatus: "verified",
+        ...profile,
+      },
+    }),
+  );
+}

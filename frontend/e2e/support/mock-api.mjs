@@ -93,6 +93,17 @@ const server = createServer((req, res) => {
     return send(res, 200, { access_code: "ACCESS_CODE_E2E", reference: "ref_e2e_001" });
   }
 
+  if (url.pathname === "/api/v1/profile") {
+    return send(res, 200, {
+      data: {
+        id: "user_e2e",
+        phone: "+2348000000000",
+        role: "user",
+        kycStatus: "verified",
+      },
+    });
+  }
+
   if (url.pathname === "/health") return send(res, 200, { ok: true });
 
   return send(res, 404, { error: "not found" });

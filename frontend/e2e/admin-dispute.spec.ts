@@ -167,7 +167,7 @@ test.describe("Admin dispute resolution", () => {
       await page.goto("/admin");
 
       // Platform volume card — value comes from the metrics fixture.
-      await expect(page.getByText("42")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText("42", { exact: true })).toBeVisible({ timeout: 10_000 });
     });
 
     test("lists all disputed trades in the table", async ({ page }) => {

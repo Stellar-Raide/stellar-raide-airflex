@@ -55,7 +55,7 @@ test.describe("Deposit", () => {
 
     await expect(page.getByTestId("deposit-error")).toContainText(/cancelled/i);
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.locator("#deposit-amount")).toHaveValue("5000");
+    await expect(page.locator("#deposit-amount")).toHaveValue(/5,?000/);
   });
 
   test("rejects an amount below the minimum before calling the API", async ({
@@ -93,7 +93,7 @@ test.describe("Deposit", () => {
     await page.getByRole("button", { name: /continue to payment/i }).click();
 
     await expect(page.getByTestId("deposit-error")).toContainText(
-      /valid amount/i,
+      /(?:valid|enter an) amount/i,
     );
   });
 

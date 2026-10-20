@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { mockCreateListing, signIn } from "./support/mocks";
+import { mockCreateListing, mockProfile, signIn } from "./support/mocks";
 
 /**
  * Sell journey (Issue #30): fill the listing form and see the trade id back.
@@ -8,6 +8,7 @@ import { mockCreateListing, signIn } from "./support/mocks";
 test.describe("Create listing", () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page);
+    await mockProfile(page);
     await mockCreateListing(page);
   });
 
@@ -37,7 +38,7 @@ test.describe("Create listing", () => {
     });
 
     await page.goto("/sell");
-    await page.locator('button[type="submit"]').click();
+    await expect(page.locator('button[type="submit"]')).toBeDisabled();
 
     expect(posted).toBe(false);
   });
