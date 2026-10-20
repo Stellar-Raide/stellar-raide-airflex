@@ -23,16 +23,19 @@ export default function NotFound() {
 
   /**
    * Quick-link rows shown beneath the primary CTAs.
-   * Guests see the sign-in / create-account links; authenticated users see
-   * the marketplace, sell, and wallet pages instead.
+   * Offers suggested navigation links (Home, Marketplace, Profile, Sell, Wallet / Auth)
+   * tailored to the user's authentication status.
    */
   const quickLinks = isAuthenticated
     ? [
-        { href: "/",       label: t("marketplace") },
-        { href: "/sell",   label: t("sellAirtime") },
-        { href: "/wallet", label: t("viewWallet") },
+        { href: "/",        label: t("home") },
+        { href: "/",        label: t("marketplace") },
+        { href: "/profile", label: t("profile") },
+        { href: "/sell",    label: t("sellAirtime") },
+        { href: "/wallet",  label: t("viewWallet") },
       ]
     : [
+        { href: "/",            label: t("home") },
         { href: "/",            label: t("marketplace") },
         { href: "/sell",        label: t("sellAirtime") },
         { href: "/auth/signup", label: t("createAccount") },
@@ -95,13 +98,16 @@ export default function NotFound() {
           </div>
 
           {/* Secondary quick-links */}
-          <div className="mt-10 border-t border-gray-100 pt-8 dark:border-gray-700">
+          <nav
+            aria-label={t("youMightBeLookingFor")}
+            className="mt-10 border-t border-gray-100 pt-8 dark:border-gray-700"
+          >
             <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
               {t("youMightBeLookingFor")}
             </p>
             <ul className="flex flex-wrap justify-center gap-x-6 gap-y-2">
-              {quickLinks.map(({ href, label }) => (
-                <li key={href}>
+              {quickLinks.map(({ href, label }, idx) => (
+                <li key={`${href}-${label}-${idx}`}>
                   <Link
                     href={href}
                     className="text-sm text-violet-600 hover:text-violet-800 hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500 rounded transition-colors dark:text-violet-400 dark:hover:text-violet-300"
@@ -111,7 +117,7 @@ export default function NotFound() {
                 </li>
               ))}
             </ul>
-          </div>
+          </nav>
         </div>
       </main>
 
