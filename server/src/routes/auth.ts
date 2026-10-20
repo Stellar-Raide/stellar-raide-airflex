@@ -470,12 +470,6 @@ router.post(
     // Invalidate the recovery token immediately so it cannot be reused
     await cache.set(`revoked_recovery_token:${tokenHash}`, "1", 15 * 60);
 
-    const sessionToken = jwt.sign(
-      { sub: userId, stellarPublicKey, tokenVersion },
-      getJwtSecret(),
-      { expiresIn: "7d" }
-    );
-
     // Do NOT issue a session JWT yet — the user must complete OTP verification for the new number
     res.status(200).json({
       message: "Phone number updated. Please verify your new phone number with the OTP sent to complete sign-in.",

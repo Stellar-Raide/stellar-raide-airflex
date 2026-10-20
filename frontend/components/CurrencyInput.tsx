@@ -14,6 +14,12 @@ export interface CurrencyInputProps
   name?: string;
   placeholder?: string;
   errorText?: string;
+  /**
+   * Optional available-balance caption rendered above the input (issue #447).
+   * Pass the (possibly optimistic) balance string so the caption stays in sync
+   * with the displayed wallet balance.
+   */
+  availableAmount?: string;
 }
 
 export function formatNairaDisplay(val: number | string): string {
@@ -34,6 +40,7 @@ export function CurrencyInput({
   name,
   placeholder = "0",
   errorText,
+  availableAmount,
   ...rest
 }: CurrencyInputProps) {
   const rawDigits = String(value ?? "").replace(/\D/g, "");
@@ -90,6 +97,14 @@ export function CurrencyInput({
 
   return (
     <div className="w-full flex flex-col gap-1">
+      {availableAmount !== undefined && (
+        <p
+          data-testid="currency-input-available"
+          className="text-xs font-medium text-gray-500 dark:text-gray-400"
+        >
+          Available: ₦{availableAmount}
+        </p>
+      )}
       <div className="relative w-full">
         <span
           aria-hidden="true"

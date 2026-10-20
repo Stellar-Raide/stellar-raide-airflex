@@ -56,6 +56,10 @@ interface DepositModalProps {
   onDepositSuccess: () => void;
   /** Null while Paystack is still provisioning the account. */
   virtualAccount?: VirtualAccount | null;
+  /** Optimistic UI (issue #447): applied with the deposit amount on success. */
+  onOptimisticApply?: (amount: number) => void;
+  /** Optimistic UI (issue #447): called if the deposit is cancelled/errors. */
+  onOptimisticRevert?: () => void;
 }
 
 /** How long the copy button stays in its confirmed state (Issue #335). */
@@ -201,6 +205,8 @@ export default function DepositModal({
   onClose,
   onDepositSuccess,
   virtualAccount = null,
+  onOptimisticApply,
+  onOptimisticRevert,
 }: DepositModalProps) {
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<Status>("idle");
@@ -338,16 +344,23 @@ export default function DepositModal({
 
       const popup = new window.PaystackPop();
       popup.resumeTransaction(data.access_code, {
-        onSuccess: () => confirmDeposit(),
+        onSuccess: () => {
+          // Optimistic UI (issue #447): credit the balance immediately while
+          // the server webhook catches up. Refetch will snap to the real value.
+          onOptimisticApply?.(Number(amount));
+          confirmDeposit();
+        },
         // Dismissal and failure both leave the modal open with an explanation:
         // closing it would lose the amount the user already typed.
         onCancel: () => {
+          onOptimisticRevert?.();
           submittingRef.current = false;
           setIsSubmitting(false);
           setStatus("idle");
           setError("Payment cancelled. Your wallet has not been charged.");
         },
         onError: (err) => {
+          onOptimisticRevert?.();
           submittingRef.current = false;
           setIsSubmitting(false);
           setStatus("idle");

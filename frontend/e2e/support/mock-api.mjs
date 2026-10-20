@@ -98,6 +98,6 @@ const server = createServer((req, res) => {
   return send(res, 404, { error: "not found" });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`mock api listening on ${PORT}`);
 });

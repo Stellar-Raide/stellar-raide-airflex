@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import type { TradeOffer } from "../../server/src/types/trade";
 import { Card } from "./ui/Card";
 import ErrorBoundary from "./ErrorBoundary";
+import TradeCardSkeleton from "./TradeCardSkeleton";
 
 interface TradesResponse {
   data: TradeOffer[];
@@ -25,6 +26,13 @@ export interface MarketplaceListingsProps {
     total: number;
     totalPages: number;
   };
+  /**
+   * Fetch listings on mount (issue #446). Defaults to false so the existing
+   * server-rendered usage that passes `initialTrades` is unchanged. When true
+   * the component shows skeleton placeholders while the first request is
+   * in-flight.
+   */
+  fetchOnMount?: boolean;
 }
 
 function formatAssetType(raw: string): string {
@@ -141,6 +149,7 @@ function EmptyState({
 export default function MarketplaceListings({
   initialTrades = [],
   initialPagination = { page: 1, limit: 20, total: initialTrades.length, totalPages: 1 },
+  fetchOnMount = false,
 }: MarketplaceListingsProps) {
   const t = useTranslations("Home");
   const searchParams = useSearchParams();
@@ -155,7 +164,7 @@ export default function MarketplaceListings({
 
   const [trades, setTrades] = useState<TradeOffer[]>(initialTrades);
   const [pagination, setPagination] = useState(initialPagination);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(fetchOnMount);
   const [error, setError] = useState<string | null>(null);
 
   const apiUrl = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:3001";
@@ -208,6 +217,14 @@ export default function MarketplaceListings({
     },
     [apiUrl]
   );
+
+  // Initial load: fetch listings on mount so the page shows skeletons instead
+  // of an empty grid while the first request is in-flight (issue #446).
+  useEffect(() => {
+    if (!fetchOnMount) return;
+    fetchListings({ assetType, carrier, minAmount, maxAmount });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAssetTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
@@ -366,7 +383,14 @@ export default function MarketplaceListings({
       {/* Grid */}
       <ErrorBoundary context={{ section: "MarketplaceListings.grid" }}>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {loading ? (
+          {error ? (
+            <div
+              role="alert"
+              className="col-span-full rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-sm font-medium text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
+            >
+              {error}
+            </div>
+          ) : loading ? (
             <div className="col-span-full py-16 text-center text-gray-500">
               Updating listings…
             </div>
