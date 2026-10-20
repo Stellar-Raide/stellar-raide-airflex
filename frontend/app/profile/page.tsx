@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { getToken, getUser, isAuthenticated } from "../lib/auth";
 import type { TradeOffer, TradeStatus } from "../../../server/src/types/trade";
 import { Badge } from "../../components/ui/Badge";
@@ -9,6 +9,12 @@ import { Card } from "../../components/ui/Card";
 import { Spinner } from "../../components/ui/Spinner";
 import { Modal } from "../../components/ui/Modal";
 import { StellarExplorerLink } from "../../components/StellarExplorerLink";
+import {
+  ProfileDetailsSkeleton,
+  TradeHistorySkeleton,
+  ProfileWalletSkeleton,
+  ProfilePageSkeleton,
+} from "./skeletons";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -469,11 +475,7 @@ export default function ProfilePage() {
   // Loading / auth gate
   // -------------------------------------------------------------------------
   if (!authChecked) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <Spinner label="Checking authentication…" />
-      </div>
-    );
+    return <ProfilePageSkeleton />;
   }
 
   // -------------------------------------------------------------------------
@@ -497,308 +499,308 @@ export default function ProfilePage() {
       {/* ------------------------------------------------------------------ */}
       {/* Profile summary                                                      */}
       {/* ------------------------------------------------------------------ */}
-      {profileLoading ? (
-        <div className="flex items-center gap-3 py-6">
-          <Spinner label="Loading profile…" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">Loading profile…</p>
-        </div>
-      ) : profileError ? (
-        <div
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
-        >
-          {profileError}
-        </div>
-      ) : profile ? (
-        <section aria-labelledby="profile-summary-heading">
-          <h2
-            id="profile-summary-heading"
-            className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100"
-          >
-            Account Details
-          </h2>
-
-          {/* Stats grid */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <StatCard
-              icon="📱"
-              label="Phone number"
-              value={profile.maskedPhone}
-            />
-            <StatCard
-              icon="📅"
-              label="Member since"
-              value={formatDate(profile.createdAt)}
-            />
-            <StatCard
-              icon="✅"
-              label="Trades completed"
-              value={profile.totalTradesCompleted}
-            />
-          </div>
-
-          {/* KYC verification status */}
-          <Card className="mt-4 flex flex-col gap-2 p-5">
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              Seller verification (KYC)
-            </p>
-            {profile.kycStatus === "verified" ? (
-              <p className="text-sm font-semibold text-green-700 dark:text-green-400">
-                ✓ Verified — you can create listings on the marketplace.
-              </p>
-            ) : profile.kycStatus === "pending" ? (
-              <>
-                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-                  ⏳ KYC Pending Review
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Your documents are being reviewed. Selling will be enabled once approved.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                  Verification required to sell
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Complete identity verification before creating marketplace listings.
-                </p>
-                <a
-                  href="/kyc"
-                  className="mt-1 inline-flex w-fit items-center text-sm font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-400"
-                >
-                  Start KYC verification →
-                </a>
-              </>
-            )}
-          </Card>
-
-          {/* Stellar public key */}
-          {profile.stellarPublicKey && (
-            <Card className="mt-4 flex flex-col gap-1 p-5">
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                Stellar Public Key
-              </p>
-              <StellarExplorerLink
-                type="account"
-                value={profile.stellarPublicKey}
-                className="text-xs font-mono break-all"
-                truncate={false}
-              />
-            </Card>
-          )}
-
-          {/* Referral link */}
-          {profile.referralCode && (
-            <Card className="mt-4 flex flex-col gap-3 p-5">
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Your referral link
-                </p>
-                <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">
-                  Share your link with friends to earn rewards when they trade.
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <div className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-mono text-gray-800 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-200 select-all overflow-x-auto">
-                  {typeof window !== "undefined"
-                    ? `${window.location.origin}/auth/signup?ref=${profile.referralCode}`
-                    : `https://stellar-raide-stellar-raide-airflex.ng/auth/signup?ref=${profile.referralCode}`}
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    const link =
-                      typeof window !== "undefined"
-                        ? `${window.location.origin}/auth/signup?ref=${profile.referralCode}`
-                        : `https://stellar-raide-stellar-raide-airflex.ng/auth/signup?ref=${profile.referralCode}`;
-                    navigator.clipboard?.writeText(link);
-                    setCopiedReferral(true);
-                    setTimeout(() => setCopiedReferral(false), 2000);
-                  }}
-                  className="whitespace-nowrap"
-                >
-                  {copiedReferral ? "Copied! ✓" : "Copy Link"}
-                </Button>
-              </div>
-            </Card>
-          )}
-        </section>
-      ) : null}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Transaction history                                                  */}
-      {/* ------------------------------------------------------------------ */}
-      <section aria-labelledby="history-heading">
-        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2
-              id="history-heading"
-              className="text-lg font-bold text-gray-900 dark:text-gray-100"
-            >
-              Transaction History
-            </h2>
-            {!tradesLoading && (
-              <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-                {pagination.total} trade{pagination.total !== 1 ? "s" : ""} total
-              </p>
-            )}
-          </div>
-
-          {/* Filter control */}
-          <div
-            role="group"
-            aria-label="Filter trades by status"
-            className="flex flex-wrap gap-2"
-          >
-            {FILTER_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => handleFilterChange(opt.value)}
-                aria-pressed={filter === opt.value}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
-                  filter === opt.value
-                    ? "border-violet-500 bg-violet-600 text-white"
-                    : "border-gray-200 bg-white text-gray-600 hover:border-violet-300 hover:text-violet-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-violet-500 dark:hover:text-violet-400"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Loading */}
-        {tradesLoading && (
-          <div className="flex items-center justify-center py-16">
-            <Spinner label="Loading transactions…" />
-          </div>
-        )}
-
-        {/* Error */}
-        {!tradesLoading && tradesError && (
+      <Suspense fallback={<ProfileDetailsSkeleton />}>
+        {profileLoading ? (
+          <ProfileDetailsSkeleton />
+        ) : profileError ? (
           <div
             role="alert"
             className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
           >
-            {tradesError}
-            <button
-              type="button"
-              onClick={fetchTrades}
-              className="ml-3 font-semibold underline hover:no-underline"
-            >
-              Retry
-            </button>
+            {profileError}
           </div>
-        )}
+        ) : profile ? (
+          <section aria-labelledby="profile-summary-heading">
+            <h2
+              id="profile-summary-heading"
+              className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100"
+            >
+              Account Details
+            </h2>
 
-        {/* Empty */}
-        {!tradesLoading && !tradesError && trades.length === 0 && (
-          <EmptyTrades filtered={filter !== "All"} />
-        )}
+            {/* Stats grid */}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <StatCard
+                icon="📱"
+                label="Phone number"
+                value={profile.maskedPhone}
+              />
+              <StatCard
+                icon="📅"
+                label="Member since"
+                value={formatDate(profile.createdAt)}
+              />
+              <StatCard
+                icon="✅"
+                label="Trades completed"
+                value={profile.totalTradesCompleted}
+              />
+            </div>
 
-        {/* Desktop table */}
-        {!tradesLoading && !tradesError && trades.length > 0 && (
-          <>
-            <div className="hidden sm:block overflow-x-auto rounded-2xl border border-gray-100 bg-white dark:border-gray-700 dark:bg-gray-800">
-              <table className="w-full text-left" aria-label="Transaction history">
-                <thead>
-                  <tr className="border-b border-gray-100 dark:border-gray-700">
-                    <th className="py-3 pl-5 pr-4 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                      Date
-                    </th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                      Asset
-                    </th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                      Amount
-                    </th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                      Role
-                    </th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                      Counterparty
-                    </th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                      Explorer
-                    </th>
-                    <th className="py-3 pl-4 pr-5 text-right text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
+            {/* KYC verification status */}
+            <Card className="mt-4 flex flex-col gap-2 p-5">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                Seller verification (KYC)
+              </p>
+              {profile.kycStatus === "verified" ? (
+                <p className="text-sm font-semibold text-green-700 dark:text-green-400">
+                  ✓ Verified — you can create listings on the marketplace.
+                </p>
+              ) : profile.kycStatus === "pending" ? (
+                <>
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                    ⏳ KYC Pending Review
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Your documents are being reviewed. Selling will be enabled once approved.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                    Verification required to sell
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Complete identity verification before creating marketplace listings.
+                  </p>
+                  <a
+                    href="/kyc"
+                    className="mt-1 inline-flex w-fit items-center text-sm font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-400"
+                  >
+                    Start KYC verification →
+                  </a>
+                </>
+              )}
+            </Card>
+
+            {/* Stellar public key */}
+            {profile.stellarPublicKey && (
+              <Card className="mt-4 flex flex-col gap-1 p-5">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Stellar Public Key
+                </p>
+                <StellarExplorerLink
+                  type="account"
+                  value={profile.stellarPublicKey}
+                  className="text-xs font-mono break-all"
+                  truncate={false}
+                />
+              </Card>
+            )}
+
+            {/* Referral link */}
+            {profile.referralCode && (
+              <Card className="mt-4 flex flex-col gap-3 p-5">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                    Your referral link
+                  </p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">
+                    Share your link with friends to earn rewards when they trade.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-mono text-gray-800 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-200 select-all overflow-x-auto">
+                    {typeof window !== "undefined"
+                      ? `${window.location.origin}/auth/signup?ref=${profile.referralCode}`
+                      : `https://stellar-raide-stellar-raide-airflex.ng/auth/signup?ref=${profile.referralCode}`}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      const link =
+                        typeof window !== "undefined"
+                          ? `${window.location.origin}/auth/signup?ref=${profile.referralCode}`
+                          : `https://stellar-raide-stellar-raide-airflex.ng/auth/signup?ref=${profile.referralCode}`;
+                      navigator.clipboard?.writeText(link);
+                      setCopiedReferral(true);
+                      setTimeout(() => setCopiedReferral(false), 2000);
+                    }}
+                    className="whitespace-nowrap"
+                  >
+                    {copiedReferral ? "Copied! ✓" : "Copy Link"}
+                  </Button>
+                </div>
+              </Card>
+            )}
+          </section>
+        ) : null}
+      </Suspense>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Transaction history                                                  */}
+      {/* ------------------------------------------------------------------ */}
+      <Suspense fallback={<TradeHistorySkeleton />}>
+        {tradesLoading ? (
+          <TradeHistorySkeleton />
+        ) : (
+          <section aria-labelledby="history-heading">
+            <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2
+                  id="history-heading"
+                  className="text-lg font-bold text-gray-900 dark:text-gray-100"
+                >
+                  Transaction History
+                </h2>
+                {!tradesLoading && (
+                  <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                    {pagination.total} trade{pagination.total !== 1 ? "s" : ""} total
+                  </p>
+                )}
+              </div>
+
+              {/* Filter control */}
+              <div
+                role="group"
+                aria-label="Filter trades by status"
+                className="flex flex-wrap gap-2"
+              >
+                {FILTER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => handleFilterChange(opt.value)}
+                    aria-pressed={filter === opt.value}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+                      filter === opt.value
+                        ? "border-violet-500 bg-violet-600 text-white"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-violet-300 hover:text-violet-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-violet-500 dark:hover:text-violet-400"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Error */}
+            {tradesError && (
+              <div
+                role="alert"
+                className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+              >
+                {tradesError}
+                <button
+                  type="button"
+                  onClick={fetchTrades}
+                  className="ml-3 font-semibold underline hover:no-underline"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {/* Empty */}
+            {!tradesError && trades.length === 0 && (
+              <EmptyTrades filtered={filter !== "All"} />
+            )}
+
+            {/* Desktop table */}
+            {!tradesError && trades.length > 0 && (
+              <>
+                <div className="hidden sm:block overflow-x-auto rounded-2xl border border-gray-100 bg-white dark:border-gray-700 dark:bg-gray-800">
+                  <table className="w-full text-left" aria-label="Transaction history">
+                    <thead>
+                      <tr className="border-b border-gray-100 dark:border-gray-700">
+                        <th className="py-3 pl-5 pr-4 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                          Date
+                        </th>
+                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                          Asset
+                        </th>
+                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                          Amount
+                        </th>
+                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                          Role
+                        </th>
+                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                          Counterparty
+                        </th>
+                        <th className="px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                          Explorer
+                        </th>
+                        <th className="py-3 pl-4 pr-5 text-right text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                          Status
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trades.map((trade) => (
+                        <TradeRow
+                          key={trade.id}
+                          trade={trade}
+                          currentUserId={currentUserId}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile cards */}
+                <div className="flex flex-col gap-3 sm:hidden">
                   {trades.map((trade) => (
-                    <TradeRow
+                    <TradeMobileCard
                       key={trade.id}
                       trade={trade}
                       currentUserId={currentUserId}
                     />
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
 
-            {/* Mobile cards */}
-            <div className="flex flex-col gap-3 sm:hidden">
-              {trades.map((trade) => (
-                <TradeMobileCard
-                  key={trade.id}
-                  trade={trade}
-                  currentUserId={currentUserId}
-                />
-              ))}
-            </div>
-
-            {/* Pagination */}
-            <div className="mt-4">
-              <Pagination
-                page={page}
-                totalPages={pagination.totalPages}
-                onPrev={() => setPage((p) => Math.max(1, p - 1))}
-                onNext={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
-              />
-            </div>
-          </>
+                {/* Pagination */}
+                <div className="mt-4">
+                  <Pagination
+                    page={page}
+                    totalPages={pagination.totalPages}
+                    onPrev={() => setPage((p) => Math.max(1, p - 1))}
+                    onNext={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                  />
+                </div>
+              </>
+            )}
+          </section>
         )}
-      </section>
+      </Suspense>
 
       {/* ------------------------------------------------------------------ */}
       {/* Danger Zone: Account Deletion (Issue #343)                         */}
       {/* ------------------------------------------------------------------ */}
-      <section aria-labelledby="danger-zone-heading">
-        <h2
-          id="danger-zone-heading"
-          className="mb-4 text-lg font-bold text-red-700 dark:text-red-400"
-        >
-          Danger Zone
-        </h2>
-        <Card className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-red-200 bg-red-50/30 p-5 dark:border-red-900/40 dark:bg-red-950/20">
-          <div>
-            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-              Delete account
-            </h3>
-            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-              Permanently schedule your account for deletion. Active and locked trades will be cancelled and personal data anonymised after a 30-day grace period.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="danger"
-            onClick={() => {
-              setDeletePhrase("");
-              setDeleteError(null);
-              setDeleteSuccess(null);
-              setIsDeleteModalOpen(true);
-            }}
-            className="whitespace-nowrap"
+      <Suspense fallback={<ProfileWalletSkeleton />}>
+        <section aria-labelledby="danger-zone-heading">
+          <h2
+            id="danger-zone-heading"
+            className="mb-4 text-lg font-bold text-red-700 dark:text-red-400"
           >
-            Delete account
-          </Button>
-        </Card>
-      </section>
+            Danger Zone
+          </h2>
+          <Card className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-red-200 bg-red-50/30 p-5 dark:border-red-900/40 dark:bg-red-950/20">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                Delete account
+              </h3>
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                Permanently schedule your account for deletion. Active and locked trades will be cancelled and personal data anonymised after a 30-day grace period.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => {
+                setDeletePhrase("");
+                setDeleteError(null);
+                setDeleteSuccess(null);
+                setIsDeleteModalOpen(true);
+              }}
+              className="whitespace-nowrap"
+            >
+              Delete account
+            </Button>
+          </Card>
+        </section>
+      </Suspense>
 
       {/* Account Deletion Confirmation Modal */}
       <Modal
