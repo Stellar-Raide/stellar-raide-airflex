@@ -150,12 +150,4 @@ upvoted requests are candidates for the next milestone.
 
 ---
 
-## Maintenance
 
-- This roadmap is updated as part of **each release**: closed issues are moved
-  to ✅, completed milestones are marked shipped, and new issues are assigned
-  to the appropriate milestone.
-- Milestone target dates are quarter-based. A milestone slips when its issues
-  slip; update the dates here when a milestone is re-planned.
-- PRs that close issues referenced in this document should keep the issue's
-  status in the roadmap table in sync.
