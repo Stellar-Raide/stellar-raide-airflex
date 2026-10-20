@@ -38,7 +38,7 @@ const SCREENSHOTS: Screenshot[] = [
 ];
 
 /**
- * Web App Manifest (issue #107).
+ * Web App Manifest (issue #107, issue #462).
  *
  * Served at /manifest.webmanifest. Next.js automatically injects the
  * `<link rel="manifest">` tag into the root layout's <head> when this file
@@ -62,6 +62,12 @@ export default function manifest(): MetadataRoute.Manifest {
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
+      },
+      {
+        src: "/icons/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "maskable",
       },
       {
         src: "/icons/icon-512.png",
