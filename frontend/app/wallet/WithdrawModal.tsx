@@ -29,6 +29,10 @@ interface WithdrawModalProps {
   onClose: () => void;
   currentBalance: string;
   onWithdrawSuccess: () => void;
+  /** Optimistic UI (issue #447): applied with the withdrawal amount on submit. */
+  onOptimisticApply?: (amount: number) => void;
+  /** Optimistic UI (issue #447): called if the withdrawal fails, to revert. */
+  onOptimisticRevert?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -40,6 +44,8 @@ export default function WithdrawModal({
   onClose,
   currentBalance,
   onWithdrawSuccess,
+  onOptimisticApply,
+  onOptimisticRevert,
 }: WithdrawModalProps) {
   const t = useTranslations("Withdraw");
   const apiUrl = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:3001";
@@ -188,6 +194,10 @@ export default function WithdrawModal({
     setError(null);
     setSuccessMessage(null);
 
+    // Optimistic UI (issue #447): subtract the amount immediately so the user
+    // sees the balance drop without waiting for the server. Reverted on failure.
+    onOptimisticApply?.(amountNum);
+
     try {
       const token = getToken();
       const res = await fetch(`${apiUrl}/api/v1/wallet/withdraw`, {
@@ -219,11 +229,13 @@ export default function WithdrawModal({
         submittingRef.current = false;
         setIsSubmitting(false);
         setError(data.error || t("submitFailed"));
+        onOptimisticRevert?.();
       }
     } catch (err) {
       submittingRef.current = false;
       setIsSubmitting(false);
       setError(t("networkError"));
+      onOptimisticRevert?.();
     }
   }
 
@@ -362,6 +374,7 @@ export default function WithdrawModal({
               onChange={(val) => setAmount(val ? String(val) : "")}
               placeholder={t("enterAmount")}
               disabled={isSubmitting}
+              availableAmount={Number(currentBalance || 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             />
           </div>
 

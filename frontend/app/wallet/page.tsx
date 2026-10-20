@@ -10,6 +10,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Card, CardHeader, CardTitle, CardContent } from "../../components/ui/Card";
 import { Spinner } from "../../components/ui/Spinner";
 import { StellarExplorerLink } from "../../components/StellarExplorerLink";
+import { useOptimisticBalance } from "../hooks/useOptimisticBalance";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -97,6 +98,16 @@ export default function WalletPage() {
   const [totalTrades, setTotalTrades] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [tradesLoading, setTradesLoading] = useState(false);
+
+  // Optimistic balance (issue #447): the displayed balance updates
+  // immediately on submit and reverts if the server rejects the action.
+  const {
+    displayedBalance,
+    displayedNumber,
+    pending: optimisticPending,
+    apply: applyOptimistic,
+    revert: revertOptimistic,
+  } = useOptimisticBalance(wallet?.balance ?? "0");
 
   // Auth guard
   useEffect(() => {
@@ -239,8 +250,16 @@ export default function WalletPage() {
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
               {t("availableBalance")}
             </p>
-            <p className="text-4xl font-extrabold text-gray-900 dark:text-gray-100">
-              ₦{parseFloat(wallet.balance).toLocaleString()}
+            <p
+              className="text-4xl font-extrabold text-gray-900 dark:text-gray-100"
+              aria-live="polite"
+            >
+              ₦{displayedBalance}
+              {optimisticPending && (
+                <span className="ml-2 align-middle text-xs font-medium text-violet-500 dark:text-violet-400">
+                  updating…
+                </span>
+              )}
             </p>
           </div>
 
@@ -394,14 +413,18 @@ Stellar Public Key (On-chain Account)
         onClose={() => setIsDepositOpen(false)}
         onDepositSuccess={handleWithdrawSuccess}
         virtualAccount={virtualAccount}
+        onOptimisticApply={(amount) => applyOptimistic(amount)}
+        onOptimisticRevert={revertOptimistic}
       />
 
       {/* Withdraw Modal */}
       <WithdrawModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        currentBalance={wallet?.balance ?? "0"}
+        currentBalance={String(displayedNumber)}
         onWithdrawSuccess={handleWithdrawSuccess}
+        onOptimisticApply={(amount) => applyOptimistic(-amount)}
+        onOptimisticRevert={revertOptimistic}
       />
     </div>
   );
