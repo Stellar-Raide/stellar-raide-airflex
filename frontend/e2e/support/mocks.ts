@@ -72,6 +72,7 @@ export async function signIn(page: Page, payload: Record<string, unknown> = {}) 
 
   await page.context().addCookies([
     { name: "Authorization", value: token, url: "http://localhost:3000" },
+    { name: "Authorization", value: token, url: "http://127.0.0.1:3000" },
   ]);
 
   await page.addInitScript((value) => {

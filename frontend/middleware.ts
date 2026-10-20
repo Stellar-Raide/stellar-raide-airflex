@@ -105,7 +105,7 @@ export function middleware(request: NextRequest) {
     const payload = verified.payload!;
 
     if (unprefixed.startsWith("/admin") && payload.role !== "admin") {
-      return NextResponse.redirect(new URL("/", request.url));
+      return secureHeaders(NextResponse.redirect(new URL("/", request.url)));
     }
   }
 
