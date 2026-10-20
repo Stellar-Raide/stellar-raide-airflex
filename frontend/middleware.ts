@@ -121,6 +121,7 @@ export function middleware(request: NextRequest) {
       const rewriteUnprefixed = stripLocalePrefix(rewriteUrl.pathname);
       if (rewriteUnprefixed === request.nextUrl.pathname) {
         response.headers.delete("x-middleware-rewrite");
+        response.headers.set("x-middleware-next", "1");
       } else {
         rewriteUrl.pathname = rewriteUnprefixed;
         response.headers.set("x-middleware-rewrite", rewriteUrl.toString());

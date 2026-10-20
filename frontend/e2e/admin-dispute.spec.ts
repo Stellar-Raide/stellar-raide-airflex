@@ -126,15 +126,18 @@ async function mockResolve(
 test.describe("Admin dispute resolution", () => {
   // ── Role gate ──────────────────────────────────────────────────────────────
   test.describe("Role gate", () => {
-    test("non-admin user sees 403 page, not the dashboard", async ({ page }) => {
+    test("non-admin user is redirected away from the admin dashboard", async ({ page }) => {
       // Sign in without a role override — default role is "user".
       await signIn(page);
       await page.goto("/admin");
 
-      await expect(page.getByRole("heading", { name: /403/i })).toBeVisible({
-        timeout: 10_000,
-      });
-      await expect(page.getByText(/restricted to administrator/i)).toBeVisible();
+      await expect(page).toHaveURL(
+        (url) => new URL(url).pathname === "/",
+        { timeout: 10_000 },
+      );
+      await expect(
+        page.getByRole("heading", { name: "Admin Dashboard" }),
+      ).toHaveCount(0);
     });
 
     test("unauthenticated visit is redirected away from /admin", async ({ page }) => {

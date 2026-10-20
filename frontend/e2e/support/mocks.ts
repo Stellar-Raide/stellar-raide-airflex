@@ -73,11 +73,26 @@ export async function signIn(page: Page, payload: Record<string, unknown> = {}) 
   await page.context().addCookies([
     { name: "Authorization", value: token, url: "http://localhost:3000" },
     { name: "Authorization", value: token, url: "http://127.0.0.1:3000" },
+    { name: "session", value: token, url: "http://localhost:3000" },
+    { name: "session", value: token, url: "http://127.0.0.1:3000" },
   ]);
 
-  await page.addInitScript((value) => {
-    window.localStorage.setItem("stellar-raide-stellar-raide-airflex:token", value as string);
-  }, token);
+  const user = {
+    id: (payload["sub"] as string) ?? "user_e2e",
+    phone: (payload["phone"] as string) ?? "+2348000000000",
+    stellarPublicKey:
+      (payload["stellarPublicKey"] as string) ??
+      "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    role: (payload["role"] as "user" | "admin") ?? "user",
+  };
+
+  await page.addInitScript(
+    ({ tokenVal, userVal }) => {
+      window.localStorage.setItem("stellar-raide-stellar-raide-airflex:token", tokenVal);
+      window.localStorage.setItem("stellar-raide-stellar-raide-airflex:user", JSON.stringify(userVal));
+    },
+    { tokenVal: token, userVal: user },
+  );
 }
 
 /** Stub the wallet endpoints. */

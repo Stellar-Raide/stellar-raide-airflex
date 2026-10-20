@@ -15,10 +15,13 @@ function apiConnectOrigins(): string {
 export function buildContentSecurityPolicy(nonce: string): string {
   const apiOrigin = apiConnectOrigins();
   const connectSrc = ["'self'", apiOrigin, "https://api.paystack.co"].filter(Boolean);
+  const isDev = process.env.NODE_ENV === "development";
 
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' https://js.paystack.co`,
+    isDev
+      ? "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.paystack.co"
+      : `script-src 'self' 'nonce-${nonce}' https://js.paystack.co`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     `connect-src ${connectSrc.join(" ")}`,
