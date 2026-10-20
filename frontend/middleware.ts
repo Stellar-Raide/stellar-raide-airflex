@@ -114,7 +114,27 @@ export function middleware(request: NextRequest) {
   }
 
   // Handle locale detection, prefixing, redirects, and cookie sync.
-  return secureHeaders(intlMiddleware(request));
+  const response = intlMiddleware(request);
+
+  // Since pages live directly under app/ (no [locale] directory), strip any
+  // internal locale rewrite so Next.js routes to the real app/ file structure.
+  const rewriteHeader = response.headers.get("x-middleware-rewrite");
+  if (rewriteHeader) {
+    try {
+      const rewriteUrl = new URL(rewriteHeader);
+      const rewriteUnprefixed = stripLocalePrefix(rewriteUrl.pathname);
+      if (rewriteUnprefixed === request.nextUrl.pathname) {
+        response.headers.delete("x-middleware-rewrite");
+      } else {
+        rewriteUrl.pathname = rewriteUnprefixed;
+        response.headers.set("x-middleware-rewrite", rewriteUrl.toString());
+      }
+    } catch {
+      // Ignore URL parse error
+    }
+  }
+
+  return secureHeaders(response);
 }
 
 export const config = {
