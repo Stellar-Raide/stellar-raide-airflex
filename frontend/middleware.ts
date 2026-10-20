@@ -4,10 +4,7 @@ import createIntlMiddleware from "next-intl/middleware";
 import { routing } from "./i18n/routing";
 import { buildContentSecurityPolicy, STATIC_SECURITY_HEADERS } from "./lib/csp";
 
-// Locale prefixes other than the default (`en`) that may appear in the URL.
-const NON_DEFAULT_LOCALES = routing.locales.filter(
-  (locale) => locale !== routing.defaultLocale
-);
+
 
 /**
  * Routes that require a valid session. Matched against the locale-stripped
@@ -56,11 +53,10 @@ function verifyJWT(token: string): { valid: boolean; payload?: any } {
   }
 }
 
-/** Strips a non-default locale prefix (e.g. `/yo/wallet` → `/wallet`). */
+/** Strips any locale prefix (e.g. `/yo/wallet` or `/en/wallet` → `/wallet`). */
 function stripLocalePrefix(pathname: string): string {
-  if (NON_DEFAULT_LOCALES.length === 0) return pathname;
   const pattern = new RegExp(
-    `^/(${NON_DEFAULT_LOCALES.join("|")})(?=/|$)`
+    `^/(${routing.locales.join("|")})(?=/|$)`
   );
   return pathname.replace(pattern, "") || "/";
 }
