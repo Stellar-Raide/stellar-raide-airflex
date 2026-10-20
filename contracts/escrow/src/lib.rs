@@ -93,8 +93,8 @@ pub enum ContractError {
     FillAlreadyProcessed = 13,
     NotAParty = 14,
     PauseCooldownNotExpired = 15,
-    InvalidCategory      = 16,
-    DuplicateFill        = 17,
+    InvalidCategory = 16,
+    DuplicateFill = 17,
 }
 
 // ---------------------------------------------------------------------------
@@ -418,8 +418,10 @@ impl EscrowContract {
         env.storage()
             .instance()
             .set(&DataKey::AllowedCategory(category.clone()), &true);
-        env.events()
-            .publish((symbol_short!("category"), symbol_short!("allowed")), category);
+        env.events().publish(
+            (symbol_short!("category"), symbol_short!("allowed")),
+            category,
+        );
         Ok(())
     }
 
@@ -431,8 +433,10 @@ impl EscrowContract {
         env.storage()
             .instance()
             .remove(&DataKey::AllowedCategory(category.clone()));
-        env.events()
-            .publish((symbol_short!("category"), symbol_short!("removed")), category);
+        env.events().publish(
+            (symbol_short!("category"), symbol_short!("removed")),
+            category,
+        );
         Ok(())
     }
 
@@ -629,8 +633,10 @@ impl EscrowContract {
             }
         }
 
-        env.events()
-            .publish((topic_released(),), (trade_id, fill_id, trade.seller.clone()));
+        env.events().publish(
+            (topic_released(),),
+            (trade_id, fill_id, trade.seller.clone()),
+        );
 
         if completed {
             env.events()
@@ -1864,7 +1870,10 @@ mod test {
             &(1_000_000 + 86_400),
         );
         assert_eq!(trade_id, 1);
-        assert_eq!(client.get_trade(&trade_id).asset_type, symbol_short!("ELEC"));
+        assert_eq!(
+            client.get_trade(&trade_id).asset_type,
+            symbol_short!("ELEC")
+        );
     }
 
     /// Admin can remove a category; listings using it are then rejected.
@@ -1992,15 +2001,18 @@ mod test {
         let released_symbol = symbol_short!("released");
         let completed_symbol = symbol_short!("completed");
 
-        let has_released = all_events.iter().any(|e| {
-            e.1.iter().any(|t| t == released_symbol.to_val())
-        });
-        let has_completed = all_events.iter().any(|e| {
-            e.1.iter().any(|t| t == completed_symbol.to_val())
-        });
+        let has_released = all_events
+            .iter()
+            .any(|e| e.1.iter().any(|t| t == released_symbol.to_val()));
+        let has_completed = all_events
+            .iter()
+            .any(|e| e.1.iter().any(|t| t == completed_symbol.to_val()));
 
         assert!(has_released, "Event topic 'released' should be published");
-        assert!(!has_completed, "Event topic 'completed' should NOT be published on partial release");
+        assert!(
+            !has_completed,
+            "Event topic 'completed' should NOT be published on partial release"
+        );
 
         // Second deposit: completes remaining 300
         client.deposit_to_escrow(&buyer, &trade_id, &300_0000000i128);
@@ -2008,10 +2020,13 @@ mod test {
 
         // Check events after final release: now "completed" MUST be present
         let all_events_after = env.events().all();
-        let has_completed_final = all_events_after.iter().any(|e| {
-            e.1.iter().any(|t| t == completed_symbol.to_val())
-        });
-        assert!(has_completed_final, "Event topic 'completed' should be published on trade completion");
+        let has_completed_final = all_events_after
+            .iter()
+            .any(|e| e.1.iter().any(|t| t == completed_symbol.to_val()));
+        assert!(
+            has_completed_final,
+            "Event topic 'completed' should be published on trade completion"
+        );
     }
 }
 
@@ -2289,7 +2304,10 @@ mod fuzz {
             &(1_000_000 + 86_400),
         );
         client.deposit_to_escrow(buyer, &trade_id, &1i128);
-        assert_eq!(client.get_trade(&trade_id).status, TradeStatus::PartiallyFilled);
+        assert_eq!(
+            client.get_trade(&trade_id).status,
+            TradeStatus::PartiallyFilled
+        );
         trade_id
     }
 
@@ -2300,7 +2318,10 @@ mod fuzz {
 
         let result = client.try_flag_dispute(&buyer, &trade_id);
         assert_eq!(result, Err(Ok(ContractError::WrongStatus)));
-        assert_eq!(client.get_trade(&trade_id).status, TradeStatus::PartiallyFilled);
+        assert_eq!(
+            client.get_trade(&trade_id).status,
+            TradeStatus::PartiallyFilled
+        );
     }
 
     #[test]

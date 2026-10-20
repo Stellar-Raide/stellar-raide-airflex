@@ -383,8 +383,17 @@ export default function MarketplaceListings({
       {/* Grid */}
       <ErrorBoundary context={{ section: "MarketplaceListings.grid" }}>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {loading ? (
-            <TradeCardSkeleton count={trades.length > 0 ? trades.length : 8} />
+          {error ? (
+            <div
+              role="alert"
+              className="col-span-full rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-sm font-medium text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
+            >
+              {error}
+            </div>
+          ) : loading ? (
+            <div className="col-span-full py-16 text-center text-gray-500">
+              Updating listings…
+            </div>
           ) : trades.length === 0 ? (
             <EmptyState t={t} hasActiveFilters={hasActiveFilters} onClear={handleClearFilters} />
           ) : (
