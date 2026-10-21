@@ -600,12 +600,11 @@ router.post(
       return;
     }
 
-    setTradeAttributes({ status: updated[0]?.status });
-
-    // Notify participants and admins
-    const participants = [trade.seller_id, trade.buyer_id].filter(Boolean) as string[];
-    void NotificationService.sendToMany(participants, "DISPUTE_FILED", {
+    // Notify both participants (trade_dispute_opened, issue #490) and admins
+    void NotificationService.notifyTradeDisputeOpened({
       tradeId: id,
+      initiatorId: userId,
+      counterpartyId: userId === trade.seller_id ? trade.buyer_id : trade.seller_id,
       reason: reason.trim(),
     });
     void NotificationService.sendToAdmins("DISPUTE_FILED", {

@@ -67,4 +67,22 @@ const nextConfig = {
   },
 };
 
-module.exports = withPWA(withNextIntl(nextConfig));
+/**
+ * Bundle analysis (Issue #544): `ANALYZE=true pnpm build` writes interactive
+ * treemaps to .next/analyze/{client,nodejs,edge}.html. Loaded only when
+ * requested so regular builds don't depend on the analyzer package.
+ */
+function withBundleAnalyzer(config) {
+  if (process.env.ANALYZE !== "true") return config;
+  let analyzer;
+  try {
+    analyzer = require("@next/bundle-analyzer");
+  } catch {
+    throw new Error(
+      "ANALYZE=true requires @next/bundle-analyzer: pnpm --filter stellar-raide-stellar-raide-airflex-frontend add -D @next/bundle-analyzer"
+    );
+  }
+  return analyzer({ enabled: true, openAnalyzer: false })(config);
+}
+
+module.exports = withBundleAnalyzer(withPWA(withNextIntl(nextConfig)));

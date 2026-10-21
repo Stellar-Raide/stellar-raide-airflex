@@ -10,12 +10,12 @@ working with the security community to resolve vulnerabilities responsibly.
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Use one of the following private channels:
+Use one of the following private channels, in order of preference:
 
-| Channel | Address |
-|---------|---------|
-| Email | security@stellar-raide-stellar-raide-airflex.io |
-| GitHub Private Advisory | [Report via GitHub →](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/security/advisories/new) |
+| Preference | Channel | Address |
+|------------|---------|---------|
+| 1 | GitHub Security Advisory (private) | [Report via GitHub →](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/security/advisories/new) |
+| 2 | Security email | security@stellar-raide-stellar-raide-airflex.io |
 
 Encrypt sensitive reports with our PGP key (available on request via the email
 above) if they contain credentials, exploit code, or private user data.
@@ -34,10 +34,23 @@ A high-quality report helps us triage and fix issues faster. Please include:
 
 ---
 
-## Response Timeline
+## Response SLAs & Disclosure
 
-| Milestone | Target |
-|-----------|--------|
+| Stage | SLA |
+|-------|-----|
+| Acknowledgement | **48 hours** |
+| Triage (severity classification) | **5 business days** |
+| Resolution — Critical | **7 days** after triage |
+| Resolution — High | **30 days** after triage |
+| Resolution — Medium | **60 days** after triage |
+| Resolution — Low | **90 days** after triage |
+
+Public disclosure is permitted once the advisory is published (fix + 7 days),
+or 90 days after the report, whichever comes first. The authoritative policy,
+including the full coordinated disclosure timeline, is the root
+[`SECURITY.md`](../SECURITY.md#response-slas).
+
+-----------|--------|
 | Acknowledgement | Within **48 hours** of receiving your report |
 | Triage & severity assessment | Within **7 days** |
 | Fix timeline communicated | Within **14 days** |
@@ -123,7 +136,7 @@ We will **not** pursue legal action against researchers who:
 - Do not access, modify, or exfiltrate real user data beyond what is necessary
   to demonstrate the vulnerability
 - Do not perform destructive testing (deleting data, disrupting service)
-- Do not disclose the issue publicly before a fix is available
+- Do not disclose the issue publicly before it is permitted under the coordinated disclosure timeline
 
 ---
 

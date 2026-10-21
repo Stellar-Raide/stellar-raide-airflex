@@ -1,16 +1,42 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { getToken, isAuthenticated } from "../lib/auth";
-import DepositModal, { type VirtualAccount } from "./DepositModal";
-import WithdrawModal from "./WithdrawModal";
+import type { VirtualAccount } from "./DepositModal";
+import type { WalletTransaction } from "./TransactionHistory";
+import { ModalSkeleton, TransactionHistorySkeleton } from "./WalletSkeletons";
 import { Button } from "../../components/ui/Button";
-import { Badge } from "../../components/ui/Badge";
-import { Card, CardHeader, CardTitle, CardContent } from "../../components/ui/Card";
+import { Card } from "../../components/ui/Card";
 import { Spinner } from "../../components/ui/Spinner";
 import { StellarExplorerLink } from "../../components/StellarExplorerLink";
 import { useOptimisticBalance } from "../hooks/useOptimisticBalance";
+
+// ---------------------------------------------------------------------------
+// Code-split chunks (Issue #544)
+//
+// The balance card is what users come here for, so it ships in the initial
+// bundle. The trade history table and the two modals (DepositModal also pulls
+// in the Paystack checkout flow) load as separate client-only chunks: the
+// history right after first paint behind a skeleton, the modals only once the
+// user first opens them.
+// ---------------------------------------------------------------------------
+
+const TransactionHistory = dynamic(() => import("./TransactionHistory"), {
+  ssr: false,
+  loading: () => <TransactionHistorySkeleton />,
+});
+
+const DepositModal = dynamic(() => import("./DepositModal"), {
+  ssr: false,
+  loading: () => <ModalSkeleton />,
+});
+
+const WithdrawModal = dynamic(() => import("./WithdrawModal"), {
+  ssr: false,
+  loading: () => <ModalSkeleton />,
+});
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,30 +56,6 @@ interface WalletResponse {
   network?: string;
   virtualAccount?: VirtualAccount | null;
   error?: string;
-}
-
-/** Status values returned by the wallet transactions endpoint. */
-type WalletTransactionStatus = "Active" | "Locked" | "Completed" | "Cancelled" | "Disputed";
-
-interface WalletTransaction {
-  id: string;
-  asset_type: string;
-  amount: number;
-  status: WalletTransactionStatus;
-  escrow_tx_hash: string | null;
-  created_at: string;
-}
-
-/**
- * Maps a WalletTransactionStatus to a BadgeStatusVariant.
- * "Active" on the backend is displayed as "Open" in the UI because
- * the trade is open/available, not yet locked by a buyer.
- */
-function walletStatusToBadgeVariant(
-  status: WalletTransactionStatus,
-): "Open" | "Locked" | "Completed" | "Cancelled" | "Disputed" {
-  if (status === "Active") return "Open";
-  return status;
 }
 
 interface TradesResponse {
@@ -92,6 +94,10 @@ export default function WalletPage() {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDepositOpen, setIsDepositOpen] = useState(false);
+  // Modals stay unmounted (and their chunks unloaded) until first opened, then
+  // stay mounted so their close/cleanup effects keep running.
+  const [depositMounted, setDepositMounted] = useState(false);
+  const [withdrawMounted, setWithdrawMounted] = useState(false);
 
   // Trade history paging (Issue #336)
   const [page, setPage] = useState(1);
@@ -206,13 +212,6 @@ export default function WalletPage() {
       .finally(() => setLoading(false));
   }
 
-  // Range shown on this page. Derived from the server's total rather than the
-  // rows in hand, so the last page reads "41–47 of 47" and not "41–50".
-  const rangeStart = totalTrades === 0 ? 0 : (page - 1) * TRADES_PER_PAGE + 1;
-  const rangeEnd = Math.min(page * TRADES_PER_PAGE, totalTrades);
-  const canGoPrevious = page > 1 && !tradesLoading;
-  const canGoNext = page < totalPages && !tradesLoading;
-
   if (!authChecked || loading) {
     return (
       <div className="flex items-center justify-center py-32">
@@ -291,14 +290,20 @@ Stellar Public Key (On-chain Account)
 <div className="flex flex-col gap-3 sm:flex-row">
             <Button
               variant="primary"
-              onClick={() => setIsDepositOpen(true)}
+              onClick={() => {
+                setDepositMounted(true);
+                setIsDepositOpen(true);
+              }}
               className="w-full"
             >
               Deposit
             </Button>
             <Button
               variant="secondary"
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => {
+                setWithdrawMounted(true);
+                setIsModalOpen(true);
+              }}
               className="w-full"
             >
               {t("withdrawFunds")}
@@ -308,124 +313,39 @@ Stellar Public Key (On-chain Account)
       )}
 
       {/* Transaction Rows with Stellar Explorer Deep-Links (Issue #66) */}
-      <Card noPadding>
-        <CardHeader className="p-6">
-          <CardTitle>Recent Transactions</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {tradesLoading && transactions.length === 0 ? (
-            <div className="flex justify-center px-6 py-8">
-              <Spinner label="Loading transactions…" />
-            </div>
-          ) : transactions.length === 0 ? (
-            <div className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-              No transactions found on this account yet.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm" aria-label="Wallet transactions">
-                <thead className="border-b border-gray-100 bg-gray-50/50 text-xs font-semibold text-gray-500 uppercase tracking-wider dark:border-gray-700/60 dark:bg-gray-900/30 dark:text-gray-400">
-                  <tr>
-                    <th className="px-6 py-3">Date</th>
-                    <th className="px-6 py-3">Asset</th>
-                    <th className="px-6 py-3">Amount</th>
-                    <th className="px-6 py-3">Status</th>
-                    <th className="px-6 py-3">Stellar Transaction</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 dark:divide-gray-700/60">
-                  {transactions.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-750/30 transition-colors">
-                      <td className="px-6 py-3.5 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                        {new Date(tx.created_at).toLocaleDateString("en-NG", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </td>
-                      <td className="px-6 py-3.5 font-medium text-gray-900 dark:text-gray-100">
-                        {tx.asset_type}
-                      </td>
-                      <td className="px-6 py-3.5 font-semibold text-gray-900 dark:text-gray-100">
-                        ₦{tx.amount.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-3.5">
-                        <Badge variant={walletStatusToBadgeVariant(tx.status)} />
-                      </td>
-                      <td className="px-6 py-3.5">
-                        {tx.escrow_tx_hash ? (
-                          <StellarExplorerLink
-                            type="transaction"
-                            value={tx.escrow_tx_hash}
-                          />
-                        ) : (
-                          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Pagination controls (Issue #336) */}
-          {totalTrades > 0 && (
-            <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 px-6 py-4 sm:flex-row dark:border-gray-700/60">
-              <p
-                data-testid="trades-range"
-                aria-live="polite"
-                className="text-xs text-gray-500 dark:text-gray-400"
-              >
-                Showing {rangeStart}–{rangeEnd} of {totalTrades}{" "}
-                {totalTrades === 1 ? "trade" : "trades"}
-              </p>
-
-              <nav className="flex items-center gap-2" aria-label="Trade history pages">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  disabled={!canGoPrevious}
-                >
-                  Previous
-                </Button>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  Page {page} of {totalPages}
-                </span>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-                  disabled={!canGoNext}
-                >
-                  Next
-                </Button>
-              </nav>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <TransactionHistory
+        transactions={transactions}
+        loading={tradesLoading}
+        page={page}
+        pageSize={TRADES_PER_PAGE}
+        totalTrades={totalTrades}
+        totalPages={totalPages}
+        onPageChange={setPage}
+      />
 
       {/* Deposit Modal (Issue #25) */}
-      <DepositModal
-        isOpen={isDepositOpen}
-        onClose={() => setIsDepositOpen(false)}
-        onDepositSuccess={handleWithdrawSuccess}
-        virtualAccount={virtualAccount}
-        onOptimisticApply={(amount) => applyOptimistic(amount)}
-        onOptimisticRevert={revertOptimistic}
-      />
+      {depositMounted && (
+        <DepositModal
+          isOpen={isDepositOpen}
+          onClose={() => setIsDepositOpen(false)}
+          onDepositSuccess={handleWithdrawSuccess}
+          virtualAccount={virtualAccount}
+          onOptimisticApply={(amount) => applyOptimistic(amount)}
+          onOptimisticRevert={revertOptimistic}
+        />
+      )}
 
       {/* Withdraw Modal */}
-      <WithdrawModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        currentBalance={String(displayedNumber)}
-        onWithdrawSuccess={handleWithdrawSuccess}
-        onOptimisticApply={(amount) => applyOptimistic(-amount)}
-        onOptimisticRevert={revertOptimistic}
-      />
+      {withdrawMounted && (
+        <WithdrawModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          currentBalance={String(displayedNumber)}
+          onWithdrawSuccess={handleWithdrawSuccess}
+          onOptimisticApply={(amount) => applyOptimistic(-amount)}
+          onOptimisticRevert={revertOptimistic}
+        />
+      )}
     </div>
   );
 }

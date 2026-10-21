@@ -11,6 +11,8 @@
  *   POST /api/v1/admin/trades/:id/resolve— settle a disputed trade (RELEASE | REFUND)
  *   GET  /api/v1/admin/users             — paginated users with balance + trade count
  *   GET  /api/v1/admin/users/:phone      — single user profile + wallet + trade history
+ *   GET  /api/v1/admin/fraud-flags       — accounts flagged by fraud rules (status filter + pagination)
+ *   PATCH /api/v1/admin/fraud-flags/:id  — close a flag as reviewed or dismissed
  */
 
 import { Router } from "express";
@@ -25,11 +27,14 @@ import pool from "../db";
 import { resolveDispute } from "../services/stellar";
 import {
   resolveDisputeSchema,
+  reviewFraudFlagSchema,
   paginationSchema,
   type ResolveDisputeInput,
+  type ReviewFraudFlagInput,
 } from "../schemas";
 import type { TradeOffer } from "../types/trade";
-import { FraudDetectionService } from "../services/fraudDetection";
+import { FraudDetectionService, type FraudFlagStatus } from "../services/fraudDetection";
+import type { AuthenticatedRequest } from "../middleware/authenticate";
 
 const router = Router();
 
@@ -466,6 +471,95 @@ router.get(
   async (_req, res) => {
     const flagged = await FraudDetectionService.getFlaggedAccounts();
     res.status(200).json({ flaggedAccounts: flagged });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Fraud flag review queue (issue #491)
+// ---------------------------------------------------------------------------
+
+const FRAUD_FLAG_STATUSES: readonly FraudFlagStatus[] = ["open", "reviewed", "dismissed"];
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * GET /api/v1/admin/fraud-flags?status=open&page=1&limit=20
+ *
+ * Accounts flagged by fraud rules (e.g. REPEATED_FAILED_TRADES), newest
+ * first. `status` is optional; omit it to list every flag.
+ */
+router.get(
+  "/fraud-flags",
+  authenticate,
+  authorize("admin"),
+  async (req, res) => {
+    const parsed = paginationSchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: "Invalid query parameters",
+        details: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const rawStatus = typeof req.query.status === "string" ? req.query.status : undefined;
+    if (rawStatus !== undefined && !FRAUD_FLAG_STATUSES.includes(rawStatus as FraudFlagStatus)) {
+      res.status(400).json({
+        error: `Invalid status. Allowed: ${FRAUD_FLAG_STATUSES.join(", ")}`,
+      });
+      return;
+    }
+
+    const { page, limit } = parsed.data;
+    const { flags, total } = await FraudDetectionService.listFraudFlags({
+      status: rawStatus as FraudFlagStatus | undefined,
+      limit,
+      offset: (page - 1) * limit,
+    });
+
+    res.status(200).json({
+      data: flags,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
+  }
+);
+
+/**
+ * PATCH /api/v1/admin/fraud-flags/:id   body: { status: "reviewed" | "dismissed", note? }
+ *
+ * Closes an open flag and records the reviewing admin, timestamp and note.
+ * 404 if the flag doesn't exist, 409 if it was already closed.
+ */
+router.patch(
+  "/fraud-flags/:id",
+  authenticate,
+  authorize("admin"),
+  validate(reviewFraudFlagSchema),
+  async (req, res) => {
+    const { id } = req.params;
+    if (!id || !UUID_PATTERN.test(id)) {
+      res.status(400).json({ error: "Invalid fraud flag id" });
+      return;
+    }
+
+    const { status, note } = req.body as ReviewFraudFlagInput;
+    const reviewerId = (req as unknown as AuthenticatedRequest).user.sub;
+
+    const flag = await FraudDetectionService.reviewFraudFlag(id, reviewerId, status, note || null);
+    if (flag) {
+      res.status(200).json({ data: flag });
+      return;
+    }
+
+    const { rows } = await pool.query<{ status: FraudFlagStatus }>(
+      `SELECT status FROM fraud_flags WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+    if (!rows.length) {
+      res.status(404).json({ error: "Fraud flag not found" });
+      return;
+    }
+    res.status(409).json({ error: `Fraud flag is already ${rows[0]!.status}` });
   }
 );
 

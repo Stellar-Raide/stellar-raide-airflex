@@ -31,7 +31,9 @@ export {
 
 export {
   resolveDisputeSchema,
+  reviewFraudFlagSchema,
   type ResolveDisputeInput,
+  type ReviewFraudFlagInput,
 } from "./admin.schemas";
 
 export {
@@ -45,3 +47,9 @@ export {
   userRatingsPaginationSchema,
   type CreateRatingInput,
 } from "./ratings.schemas";
+
+export {
+  profileUpdateSchema,
+  updateProfileSchema,
+  type ProfileUpdateInput,
+} from "./profile.schemas";

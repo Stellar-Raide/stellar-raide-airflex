@@ -41,6 +41,7 @@ import { WalletService } from "./wallet";
 import { creditReferralReward } from "./referrals";
 import { NotificationService } from "./notifications";
 import { ContractError, parseContractError } from "./contractErrors";
+import { FraudDetectionService, type FailedTradeReason } from "./fraudDetection";
 import type { TradeOffer } from "../types/trade";
 import logger from "../utils/logger";
 import {
@@ -175,18 +176,25 @@ export async function triggerVerification(
     [tradeId]
   );
 
+  // Every rejected confirmation counts as a failed trade attempt by the
+  // caller for fraud detection (issue #491).
+  const reject = (message: string, statusCode: number): VerificationError => {
+    trackFailedTrade([sellerId], tradeId, "CONFIRMATION_REJECTED");
+    return new VerificationError(message, statusCode);
+  };
+
   if (!rows.length) {
-    throw new VerificationError("Trade not found", 404);
+    throw reject("Trade not found", 404);
   }
 
   const trade = rows[0]!;
 
   if (trade.seller_id !== sellerId) {
-    throw new VerificationError("Only the seller can confirm delivery", 403);
+    throw reject("Only the seller can confirm delivery", 403);
   }
 
   if (trade.status !== "Locked") {
-    throw new VerificationError(
+    throw reject(
       `Trade cannot be confirmed in its current state (${trade.status}). ` +
         `Only Locked trades can be confirmed.`,
       400
@@ -194,7 +202,7 @@ export async function triggerVerification(
   }
 
   if (!trade.contract_listing_id) {
-    throw new VerificationError(
+    throw reject(
       "Trade has no associated on-chain listing ID",
       400
     );
@@ -226,17 +234,84 @@ export async function runVerificationWithRetry(
   log("info", tradeId, `Verification attempt ${attempt}/${maxRetries}`);
 
   try {
-    // Each attempt is its own child span of the release stage, so retries
-    // show up side by side in the trace with their individual errors.
-    await withSpan(
-      "trade.release.attempt",
-      {
-        [TRADE_ATTRIBUTES.tradeId]: tradeId,
-        "trade.release.attempt": attempt,
-        "trade.release.max_attempts": maxRetries,
-      },
-      () => releaseAndSettle(trade, contractListingId)
-    );
+    // ------------------------------------------------------------------
+    // Call release_payment on the Soroban contract
+    // ------------------------------------------------------------------
+    const txHash = await releasePayment(contractListingId);
+
+    // ------------------------------------------------------------------
+    // Success — update DB to Completed
+    // ------------------------------------------------------------------
+    const client = await pool.connect();
+    let updated: TradeOffer[] = [];
+    try {
+      await client.query("BEGIN");
+      const { rows: locked } = await client.query<TradeOffer>(
+        `SELECT * FROM trade_offers WHERE id = $1 AND status = 'Locked' FOR UPDATE`,
+        [tradeId]
+      );
+      if (!locked.length) {
+        await client.query("ROLLBACK");
+        log("warn", tradeId, "Settlement skipped — status already changed");
+        return;
+      }
+
+      const settledTrade = locked[0]!;
+      const tradeAmount = Number(settledTrade.amount);
+      const feeAmount = calculatePlatformFee(tradeAmount);
+      const sellerNetAmount = Math.round((tradeAmount - feeAmount + Number.EPSILON) * 100) / 100;
+      const treasuryUserId = process.env["PLATFORM_TREASURY_USER_ID"];
+      if (!treasuryUserId) throw new Error("PLATFORM_TREASURY_USER_ID is not set");
+      if (!settledTrade.buyer_id) throw new Error("Trade has no buyer to debit");
+
+      const wallet = new WalletService(client);
+      await wallet.debit(settledTrade.buyer_id, tradeAmount, tradeId);
+      await wallet.credit({ userId: settledTrade.seller_id, amount: sellerNetAmount, type: "trade_settlement", tradeId });
+      await wallet.credit({ userId: treasuryUserId, amount: feeAmount, type: "platform_fee", tradeId });
+
+      const result = await client.query<TradeOffer>(
+        `UPDATE trade_offers
+            SET status = 'Completed', fee_amount = $2, seller_net_amount = $3, updated_at = NOW()
+          WHERE id = $1 AND status = 'Locked'
+          RETURNING *`,
+        [tradeId, feeAmount, sellerNetAmount]
+      );
+      updated = result.rows;
+      await creditReferralReward(client, settledTrade.buyer_id, tradeId);
+      await creditReferralReward(client, settledTrade.seller_id, tradeId);
+      await client.query("COMMIT");
+    } catch (settlementError) {
+      await client.query("ROLLBACK");
+      throw settlementError;
+    } finally {
+      client.release();
+    }
+
+    if (!updated.length) return;
+
+    log("info", tradeId, `Release successful. tx=${txHash}`);
+
+    // ------------------------------------------------------------------
+    // Notify parties via SSE
+    // ------------------------------------------------------------------
+    const participants = buildParticipantList(trade);
+
+    // A completed trade breaks any run of consecutive failures (issue #491)
+    resetFailedTrades(participants, tradeId);
+
+    SseEmitter.emit(participants, {
+      type:    "trade_completed",
+      tradeId,
+      status:  "Completed",
+      txHash,
+      message: "Payment has been released to the seller.",
+    });
+
+    // Out-of-band SMS to both parties (best-effort)
+    void NotificationService.sendToMany(participants, "TRADE_COMPLETED", {
+      tradeId,
+    });
+
   } catch (err) {
     const errorName = err instanceof Error ? err.name || err.constructor.name : "UnknownError";
     const message = err instanceof Error ? err.message : String(err);
@@ -248,6 +323,10 @@ export async function runVerificationWithRetry(
     // ------------------------------------------------------------------
     if (isPermanentError(err)) {
       log("error", tradeId, `Permanent error encountered [${errorName}]: ${message}. Aborting retries immediately.`);
+      // The contract rejected the release outright, so the trade itself is
+      // bad — count it against both parties (issue #491). Exhausted retries
+      // on transient errors below are infrastructure failures and don't count.
+      trackFailedTrade(buildParticipantList(trade), tradeId, "VERIFICATION_FAILED");
       await escalateToDisputed(trade, `Permanent error: ${message}`);
       return;
     }
@@ -434,6 +513,34 @@ async function escalate(trade: TradeOffer, reason: string): Promise<void> {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Records a failed trade attempt for each user with the fraud-detection
+ * service. Fire-and-forget: tracking problems are logged, never surfaced to
+ * the trade flow.
+ */
+function trackFailedTrade(
+  userIds: string[],
+  tradeId: string,
+  reason: FailedTradeReason
+): void {
+  for (const userId of userIds) {
+    void FraudDetectionService.recordFailedTrade(userId, tradeId, reason).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      log("warn", tradeId, `Failed-trade tracking failed for user ${userId}: ${msg}`);
+    });
+  }
+}
+
+/** Clears failed-trade history for each user after a success. Fire-and-forget. */
+function resetFailedTrades(userIds: string[], tradeId: string): void {
+  for (const userId of userIds) {
+    void FraudDetectionService.resetFailedTrades(userId).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      log("warn", tradeId, `Failed-trade reset failed for user ${userId}: ${msg}`);
+    });
+  }
+}
 
 /** Builds a deduplicated list of user IDs involved in a trade. */
 function buildParticipantList(trade: TradeOffer): string[] {

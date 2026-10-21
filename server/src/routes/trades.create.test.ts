@@ -51,6 +51,7 @@ jest.mock("../services/notifications", () => ({
     send: jest.fn(),
     sendToMany: jest.fn(),
     sendToAdmins: jest.fn(),
+    notifyTradeDisputeOpened: jest.fn(),
   },
 }));
 
