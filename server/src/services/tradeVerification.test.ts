@@ -13,6 +13,7 @@ import {
 import pool from "../db";
 import { releasePayment } from "./stellar";
 import { SseEmitter } from "./sseEmitter";
+import { FraudDetectionService } from "./fraudDetection";
 import {
   WrongStatusError,
   TradeNotFoundError,
@@ -41,6 +42,13 @@ jest.mock("./notifications", () => ({
   NotificationService: {
     sendToMany: jest.fn(),
     sendToAdmins: jest.fn(),
+  },
+}));
+
+jest.mock("./fraudDetection", () => ({
+  FraudDetectionService: {
+    recordFailedTrade: jest.fn().mockResolvedValue({ failureCount: 1, flagged: false }),
+    resetFailedTrades: jest.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -269,9 +277,87 @@ describe("tradeVerification service", () => {
       );
       expect(SseEmitter.emitAll).not.toHaveBeenCalled();
     });
+
+    describe("fraud detection hooks (issue #491)", () => {
+      const recordFailedTrade = FraudDetectionService.recordFailedTrade as jest.Mock;
+      const resetFailedTrades = FraudDetectionService.resetFailedTrades as jest.Mock;
+
+      it("records a VERIFICATION_FAILED attempt for both parties on a permanent error", async () => {
+        (releasePayment as jest.Mock).mockRejectedValueOnce(new WrongStatusError());
+        (pool.query as jest.Mock).mockResolvedValue({ rows: [] });
+
+        await runVerificationWithRetry(mockTrade, 1);
+
+        expect(recordFailedTrade).toHaveBeenCalledTimes(2);
+        expect(recordFailedTrade).toHaveBeenCalledWith("seller-123", "trade-uuid-1", "VERIFICATION_FAILED");
+        expect(recordFailedTrade).toHaveBeenCalledWith("buyer-456", "trade-uuid-1", "VERIFICATION_FAILED");
+        expect(resetFailedTrades).not.toHaveBeenCalled();
+      });
+
+      it("does not count transient failures that exhaust retries (infrastructure, not the user)", async () => {
+        process.env["RELEASE_RETRY_MAX"] = "2";
+        (releasePayment as jest.Mock).mockRejectedValue(new Error("Soroban RPC 503"));
+        (pool.query as jest.Mock).mockResolvedValue({ rows: [] });
+
+        await runVerificationWithRetry(mockTrade, 1);
+
+        expect(recordFailedTrade).not.toHaveBeenCalled();
+      });
+
+      it("resets both parties' failure history when the trade completes", async () => {
+        (releasePayment as jest.Mock).mockResolvedValueOnce("0xtxhash");
+        process.env["PLATFORM_TREASURY_USER_ID"] = "treasury-admin";
+        (pool.connect as jest.Mock).mockResolvedValue({
+          query: jest.fn().mockImplementation((query: string) => {
+            if (query.includes("FOR UPDATE")) return Promise.resolve({ rows: [mockTrade] });
+            if (query.includes("UPDATE trade_offers")) {
+              return Promise.resolve({ rows: [{ ...mockTrade, status: "Completed" }] });
+            }
+            return Promise.resolve({ rows: [] });
+          }),
+          release: jest.fn(),
+        });
+
+        await runVerificationWithRetry(mockTrade, 1);
+
+        expect(resetFailedTrades).toHaveBeenCalledWith("seller-123");
+        expect(resetFailedTrades).toHaveBeenCalledWith("buyer-456");
+        expect(recordFailedTrade).not.toHaveBeenCalled();
+      });
+
+      it("still escalates the trade when fraud tracking itself fails", async () => {
+        recordFailedTrade.mockRejectedValueOnce(new Error("cache down"));
+        (releasePayment as jest.Mock).mockRejectedValueOnce(new WrongStatusError());
+        (pool.query as jest.Mock).mockResolvedValue({ rows: [] });
+
+        await expect(runVerificationWithRetry(mockTrade, 1)).resolves.toBeUndefined();
+
+        expect(SseEmitter.emitAll).toHaveBeenCalledWith(
+          expect.objectContaining({ type: "admin_alert", tradeId: "trade-uuid-1" })
+        );
+      });
+    });
   });
 
   describe("triggerVerification", () => {
+    it.each([
+      ["trade not found", []],
+      ["caller is not the seller", [{ id: "trade-1", seller_id: "someone-else", status: "Locked", contract_listing_id: "1" }]],
+      ["trade is not Locked", [{ id: "trade-1", seller_id: "seller-1", status: "Completed", contract_listing_id: "1" }]],
+      ["no on-chain listing", [{ id: "trade-1", seller_id: "seller-1", status: "Locked", contract_listing_id: null }]],
+    ])("records a CONFIRMATION_REJECTED attempt by the caller when %s", async (_label, rows) => {
+      (pool.query as jest.Mock).mockResolvedValueOnce({ rows });
+
+      await expect(triggerVerification("trade-1", "seller-1")).rejects.toThrow(VerificationError);
+
+      expect(FraudDetectionService.recordFailedTrade).toHaveBeenCalledTimes(1);
+      expect(FraudDetectionService.recordFailedTrade).toHaveBeenCalledWith(
+        "seller-1",
+        "trade-1",
+        "CONFIRMATION_REJECTED"
+      );
+    });
+
     it("validates that the caller is the seller and trade is Locked", async () => {
       (pool.query as jest.Mock).mockResolvedValueOnce({ rows: [] });
 

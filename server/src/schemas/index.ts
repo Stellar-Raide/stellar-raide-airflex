@@ -31,7 +31,9 @@ export {
 
 export {
   resolveDisputeSchema,
+  reviewFraudFlagSchema,
   type ResolveDisputeInput,
+  type ReviewFraudFlagInput,
 } from "./admin.schemas";
 
 export {
