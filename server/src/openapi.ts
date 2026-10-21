@@ -1382,6 +1382,17 @@ export const openApiDocument = {
         summary: "Withdraw to bank account",
         description: "Initiates a withdrawal to a Nigerian bank account via Paystack.",
         security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "Idempotency-Key",
+            in: "header",
+            required: true,
+            description:
+              "Unique key per withdrawal (8–128 characters: letters, digits, '.', '_', ':', '-'). " +
+              "A retry with the same key and body returns the original response without debiting again.",
+            schema: { type: "string", minLength: 8, maxLength: 128, pattern: "^[A-Za-z0-9._:-]+$" },
+          },
+        ],
         requestBody: {
           required: true,
           content: {
@@ -1403,7 +1414,7 @@ export const openApiDocument = {
             },
           },
           "400": {
-            description: "Invalid input or insufficient balance.",
+            description: "Invalid input, missing or malformed Idempotency-Key, or insufficient balance.",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ErrorResponse" },
@@ -1412,6 +1423,14 @@ export const openApiDocument = {
           },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "404": { $ref: "#/components/responses/NotFound" },
+          "422": {
+            description: "The Idempotency-Key was already used with a different request body.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
           "500": { $ref: "#/components/responses/InternalError" },
         },
       },

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { getToken } from "../lib/auth";
 import { CurrencyInput } from "../../components/CurrencyInput";
+import { newIdempotencyKey } from "../offline/orderQueue";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,6 +71,11 @@ export default function WithdrawModal({
   // submits in the same tick would both see `isSubmitting === false`.
   const submittingRef = useRef(false);
   const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Idempotency-Key for the withdrawal (issue #479). Resubmitting the exact
+  // same request after a network error reuses the key, so if the first
+  // attempt did reach the server the wallet is not debited twice.
+  const pendingRequest = useRef<{ body: string; key: string } | null>(null);
 
   const isSubmittingRef = useRef(isSubmitting);
   isSubmittingRef.current = isSubmitting;
@@ -198,22 +204,32 @@ export default function WithdrawModal({
     // sees the balance drop without waiting for the server. Reverted on failure.
     onOptimisticApply?.(amountNum);
 
+    const body = JSON.stringify({
+      amount: amountNum,
+      bank_code: selectedBank?.code,
+      account_number: accountNumber,
+      account_name: accountName,
+    });
+    const idempotencyKey =
+      pendingRequest.current?.body === body
+        ? pendingRequest.current.key
+        : newIdempotencyKey();
+    pendingRequest.current = { body, key: idempotencyKey };
+
     try {
       const token = getToken();
       const res = await fetch(`${apiUrl}/api/v1/wallet/withdraw`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          amount: amountNum,
-          bank_code: selectedBank?.code,
-          account_number: accountNumber,
-          account_name: accountName,
-        }),
+        body,
       });
 
+      // The server answered, so the next submit is a new request.
+      pendingRequest.current = null;
       const data = (await res.json()) as WithdrawResponse;
 
       if (data.success) {
