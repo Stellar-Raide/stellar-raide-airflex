@@ -32,6 +32,34 @@ export const TEST_TRADE = {
   updated_at: new Date().toISOString(),
 };
 
+/**
+ * Lifecycle trade (Issue #531). Unlike TEST_TRADE its status is mutable, so the
+ * full-lifecycle spec can move it Active → Locked → Completed and see each
+ * stage rendered by the server-side trade page.
+ */
+export const LIFECYCLE_TRADE_ID = "trade_e2e_lifecycle";
+
+function freshLifecycleTrade() {
+  return {
+    ...TEST_TRADE,
+    id: LIFECYCLE_TRADE_ID,
+    seller_id: "seller_e2e",
+    buyer_id: null,
+    status: "Active",
+    payment_confirmed: false,
+    escrow_tx_hash: null,
+    expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+let lifecycleTrade = freshLifecycleTrade();
+
+function updateLifecycle(patch) {
+  lifecycleTrade = { ...lifecycleTrade, ...patch, updated_at: new Date().toISOString() };
+  return lifecycleTrade;
+}
+
 function send(res, status, body) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
@@ -54,6 +82,42 @@ const server = createServer((req, res) => {
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     });
     return res.end();
+  }
+
+  const lifecyclePath = `/api/v1/trades/${LIFECYCLE_TRADE_ID}`;
+
+  if (url.pathname === "/__e2e/lifecycle/reset" && req.method === "POST") {
+    lifecycleTrade = freshLifecycleTrade();
+    return send(res, 200, { data: lifecycleTrade });
+  }
+
+  if (url.pathname === lifecyclePath) {
+    return send(res, 200, { data: lifecycleTrade });
+  }
+
+  if (url.pathname === `${lifecyclePath}/buy` && req.method === "POST") {
+    if (lifecycleTrade.status !== "Active") return send(res, 409, { error: "not active" });
+    return send(res, 200, {
+      data: updateLifecycle({
+        status: "Locked",
+        buyer_id: "buyer_e2e",
+        escrow_tx_hash: "lifecycle_escrow_tx",
+      }),
+    });
+  }
+
+  if (url.pathname === `${lifecyclePath}/confirm-payment` && req.method === "POST") {
+    if (lifecycleTrade.status !== "Locked") return send(res, 409, { error: "not locked" });
+    return send(res, 200, { data: updateLifecycle({ payment_confirmed: true }) });
+  }
+
+  if (url.pathname === `${lifecyclePath}/release` && req.method === "POST") {
+    if (lifecycleTrade.status !== "Locked" || !lifecycleTrade.payment_confirmed) {
+      return send(res, 409, { error: "payment not confirmed" });
+    }
+    return send(res, 200, {
+      data: updateLifecycle({ status: "Completed", release_tx_hash: "lifecycle_release_tx" }),
+    });
   }
 
   if (url.pathname === `/api/v1/trades/${TEST_TRADE.id}`) {

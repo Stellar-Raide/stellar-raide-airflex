@@ -78,4 +78,40 @@ describe("ErrorBoundary", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(reportError).toHaveBeenCalledTimes(1);
   });
+
+  it("calls onReset and recovers when 'Try again' button is clicked", () => {
+    let shouldThrow = true;
+    const onReset = jest.fn(() => {
+      shouldThrow = false;
+    });
+
+    function RecoverableChild() {
+      if (shouldThrow) {
+        throw new Error("Temporary error");
+      }
+      return <div>Recovered child content</div>;
+    }
+
+    const { rerender } = render(
+      <ErrorBoundary onReset={onReset}>
+        <RecoverableChild />
+      </ErrorBoundary>
+    );
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+
+    const tryAgainBtn = screen.getByRole("button", { name: /try again/i });
+    expect(tryAgainBtn).toBeInTheDocument();
+
+    tryAgainBtn.click();
+    expect(onReset).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ErrorBoundary onReset={onReset}>
+        <RecoverableChild />
+      </ErrorBoundary>
+    );
+    expect(screen.getByText("Recovered child content")).toBeInTheDocument();
+  });
 });

@@ -34,6 +34,9 @@ jobs:
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
+      # Includes e2e/trade-lifecycle.spec.ts (Issue #531), which runs buyer and
+      # seller in separate browser contexts and is capped at 90 seconds by its
+      # own test.setTimeout.
       - name: Run E2E suite
         run: pnpm test:e2e
         env:

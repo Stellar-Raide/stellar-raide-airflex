@@ -34,9 +34,10 @@ const router = Router();
 router.get("/", authenticate, (req, res) => {
   const { sub: userId } = (req as AuthenticatedRequest).user;
 
-  // Hand the response over to the SSE hub — it sets headers and keeps
-  // the connection alive until the client disconnects.
-  SseEmitter.addClient(userId, res);
+  // Hand the response over to the SSE hub — it sets headers, replays events
+  // missed since Last-Event-ID (sent automatically by EventSource on
+  // reconnect), and keeps the connection alive until the client disconnects.
+  SseEmitter.addClient(userId, res, req.header("last-event-id"));
 });
 
 export default router;

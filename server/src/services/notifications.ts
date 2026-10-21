@@ -21,7 +21,7 @@ import pool from "../db";
 import logger from "../utils/logger";
 import {
   NOTIFICATION_TEMPLATES,
-  renderTradeDisputeOpened,
+  renderTemplate,
   type NotificationTemplateKey,
 } from "./notificationTemplates";
 
@@ -67,17 +67,6 @@ const TERMII_SMS_URL = "https://api.ng.termii.com/api/sms/send";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Substitutes `{name}` placeholders in a template with payload values. */
-function renderTemplate(
-  template: string,
-  payload: NotificationPayload
-): string {
-  return Object.entries(payload).reduce(
-    (text, [key, value]) => text.split(`{${key}}`).join(String(value)),
-    template
-  );
-}
-
 /** Loads a single user's phone + opt-out flag, or null if not found. */
 async function loadTarget(userId: string): Promise<NotificationTarget | null> {
   const { rows } = await pool.query<NotificationTarget>(
@@ -112,6 +101,10 @@ async function dispatchSms(
   if (!apiKey) {
     throw new Error("TERMII_API_KEY environment variable is not set");
   }
+
+  // Throws MissingTemplateVariableError on an incomplete payload, which
+  // sendToTarget logs and swallows — better no SMS than a malformed one.
+  const text = renderTemplate(NOTIFICATION_TEMPLATES[event], payload);
 
   const res = await fetch(TERMII_SMS_URL, {
     method: "POST",

@@ -4,10 +4,13 @@
  *
  * Templates live here as plain string constants so route handlers and services
  * never inline message text. The NotificationService renders these constants
- * with the event payload (see `renderTemplate` in notifications.ts).
+ * with the event payload via `renderTemplate` / `renderNotification`.
  *
  * Placeholders are expressed as `{name}` tokens and are substituted from the
- * payload passed to `NotificationService.send(...)`.
+ * payload passed to `NotificationService.send(...)`. Rendering is strict: a
+ * placeholder without a matching payload value throws a
+ * `MissingTemplateVariableError` instead of leaking a raw `{name}` token into
+ * a message a user will read.
  */
 
 export const NOTIFICATION_TEMPLATES = {
