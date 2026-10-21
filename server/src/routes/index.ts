@@ -1,4 +1,4 @@
-import { Express } from 'express';
+import { Express, Request, Response } from 'express';
 import authRouter from './auth';
 import tradesRouter from './trades';
 import walletRouter from './wallet';
@@ -14,6 +14,17 @@ import usersRouter from './users';
 import ratesRouter from './rates';
 
 export function registerRoutes(app: Express): void {
+  // CORS preflight (issue #539). The global CORS middleware (config/cors.ts)
+  // has already attached Access-Control-* headers for allowlisted origins and
+  // passes OPTIONS through (preflightContinue). Terminate every preflight
+  // here, before any router runs, so `authenticate` never sees a
+  // credential-less OPTIONS request and answers it with 401. Unlisted origins
+  // still get a 204, but without the CORS headers the browser blocks the
+  // follow-up request.
+  app.options('*', (_req: Request, res: Response) => {
+    res.status(204).end();
+  });
+
   // API v1 routes
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/trades', tradesRouter);

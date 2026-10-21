@@ -5,5 +5,6 @@
   "trades": "Trades",
   "wallet": "Wallet",
   "profile": "Profile",
-  "events": "Events"
+  "events": "Events",
+  "admin": "Admin"
 }

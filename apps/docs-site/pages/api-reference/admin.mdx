@@ -1,0 +1,92 @@
+---
+title: Admin
+---
+
+import { Callout } from "nextra/components";
+
+# Admin
+
+<Callout type="info">
+  Generated from [`openapi/openapi.json`](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/apps/docs-site/openapi/openapi.json).
+  Run `npm run generate:api` in `apps/docs-site` after changing the spec to
+  refresh this page. The raw spec is also served at
+  [`/openapi.json`](/openapi.json).
+</Callout>
+
+Platform administration. The audit trail is readable by super-admins only.
+
+## `GET /api/v1/admin/audit-logs` 🔒
+
+**Query the immutable admin audit trail (super_admin only)**
+
+State-changing admin actions (dispute resolutions, fraud flag reviews, webhook replays) with actor, target, before/after state and request context, newest first. Entries are append-only: POST/PUT/PATCH/DELETE return 405 and the database rejects modification. Entries older than 365 days are purged by a daily retention job.
+
+**Parameters**
+
+| Name | In | Type | Notes |
+|------|----|------|-------|
+| `actorId` | query | string | optional |
+| `action` | query | string | optional (one of `trade.dispute_resolved`, `fraud_flag.reviewed`, `webhook.replayed`, `user.banned`, `user.unbanned`, `kyc.approved`, `kyc.rejected`) |
+| `targetType` | query | string | optional (one of `trade`, `fraud_flag`, `webhook_event`, `user`, `kyc`) |
+| `targetId` | query | string | optional |
+| `from` | query | string | optional |
+| `to` | query | string | optional |
+| `page` | query | integer | optional (min 1, default `1`) |
+| `limit` | query | integer | optional (min 1, max 100, default `20`) |
+
+
+**Responses**
+
+**`200`** — Matching audit entries
+
+```json
+{
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "occurred_at": "2026-08-24T10:00:00.000Z",
+      "actor_id": "550e8400-e29b-41d4-a716-446655440000",
+      "actor_role": "admin",
+      "action": "trade.dispute_resolved",
+      "target_type": "trade",
+      "target_id": "string",
+      "before_value": {},
+      "after_value": {},
+      "metadata": {}
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 42,
+    "totalPages": 3
+  }
+}
+```
+
+**`400`** — Invalid query parameters
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`401`** — Missing or invalid Authorization header
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+**`403`** — Super-admin access required
+
+```json
+{
+  "error": "Human-readable message"
+}
+```
+
+---
+

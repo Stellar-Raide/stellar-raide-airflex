@@ -13,6 +13,9 @@ import { verifyTradeDeliveryProcessor }   from "./processors/verify-trade-delive
 import { processPaystackWebhookProcessor } from "./processors/process-paystack-webhook";
 import { refundCancelledTradeProcessor }  from "./processors/refund-cancelled-trade";
 import { processWithdrawalProcessor }     from "./processors/process-withdrawal";
+import { generateDataExportProcessor, purgeExpiredDataExports } from "./processors/generate-data-export";
+import { purgeExpiredAuditLogs }          from "./auditLogRetention";
+import { schedule, ONE_DAY_MS }           from "./cron";
 
 /** Initialise the queue service and register all processors. */
 export function initJobQueue(): void {
@@ -27,6 +30,11 @@ export function initJobQueue(): void {
   QueueService.register("process-paystack-webhook", processPaystackWebhookProcessor);
   QueueService.register("refund-cancelled-trade",  refundCancelledTradeProcessor);
   QueueService.register("process-withdrawal",      processWithdrawalProcessor);
+  QueueService.register("generate-data-export",    generateDataExportProcessor);
+
+  // Daily maintenance (issue #539)
+  schedule({ name: "audit-log-retention",   intervalMs: ONE_DAY_MS, run: () => purgeExpiredAuditLogs() });
+  schedule({ name: "data-export-cleanup",   intervalMs: ONE_DAY_MS, run: () => purgeExpiredDataExports() });
 }
 
 // Re-export queue primitives so route/service files only import from here
@@ -38,3 +46,4 @@ export type { SendNotificationData }      from "./processors/send-notification";
 export type { VerifyTradeDeliveryData }   from "./processors/verify-trade-delivery";
 export type { RefundCancelledTradeData }  from "./processors/refund-cancelled-trade";
 export type { ProcessWithdrawalData }     from "./processors/process-withdrawal";
+export type { GenerateDataExportData }    from "./processors/generate-data-export";

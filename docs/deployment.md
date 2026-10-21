@@ -76,7 +76,7 @@ Deploy the server and database to Railway in one click:
 5. Click **Deploy**.
 
 6. Once deployed, note your Vercel URL (e.g. `https://stellar-raide-stellar-raide-airflex.vercel.app`). You will add
-   this as `CORS_ORIGIN` on the Railway server.
+   this as `CORS_ALLOWED_ORIGINS` on the Railway server.
 
 ### Verifying a Successful Frontend Deployment
 
@@ -128,7 +128,7 @@ Deploy the server and database to Railway in one click:
 | `SOROBAN_RPC_URL` | Yes | Soroban RPC endpoint (see Section 4) |
 | `PAYSTACK_SECRET_KEY` | Yes | Paystack live or test secret key |
 | `TERMII_API_KEY` | Yes | Termii SMS API key |
-| `CORS_ORIGIN` | Yes | Your Vercel frontend URL (e.g. `https://stellar-raide-stellar-raide-airflex.vercel.app`) |
+| `CORS_ALLOWED_ORIGINS` | Yes | Comma-separated frontend origin(s), e.g. `https://stellar-raide-stellar-raide-airflex.vercel.app` (`*` is rejected in production; legacy `CORS_ORIGIN` still read as a fallback) |
 | `REDIS_URL` | Yes | Redis connection string for BullMQ job queue (Railway Redis add-on) |
 | `ENABLE_API_DOCS` | No | Set to `true` to serve Swagger UI in non-production environments |
 
@@ -272,7 +272,7 @@ Work through this checklist after every fresh deployment or promotion to product
 
 ### Security
 
-- [ ] `CORS_ORIGIN` is set to the exact Vercel frontend URL (not `*`)
+- [ ] `CORS_ALLOWED_ORIGINS` lists the exact Vercel frontend URL(s) (the server refuses to start with `*`)
 - [ ] `NODE_ENV=production` — Swagger UI should be disabled
 - [ ] `JWT_SECRET` is a strong random value (not the placeholder)
 - [ ] `ENCRYPTION_KEY` is 64 hex chars and stored only in Railway's encrypted variables
@@ -300,7 +300,7 @@ Work through this checklist after every fresh deployment or promotion to product
 | OTP SMS not delivered | TERMII_API_KEY invalid or unset | Check Termii dashboard logs |
 | Wallet balance fetch fails | HORIZON_URL unreachable | Confirm `STELLAR_NETWORK` and `HORIZON_URL` match |
 | `release_payment` fails | STELLAR_SERVER_SECRET account not funded | Fund via Friendbot (testnet) or send XLM (mainnet) |
-| CORS errors in browser | CORS_ORIGIN mismatch | Set `CORS_ORIGIN` to exact Vercel URL including protocol |
+| CORS errors in browser | Origin not in CORS_ALLOWED_ORIGINS | Add the exact Vercel origin (protocol + host, no trailing slash) to `CORS_ALLOWED_ORIGINS` |
 | BullMQ jobs not processing | REDIS_URL not set or Redis down | Add Redis add-on on Railway and set `REDIS_URL` |
 
 ---

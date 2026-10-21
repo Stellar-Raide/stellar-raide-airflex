@@ -13,6 +13,10 @@
  *   GET  /api/v1/admin/users/:phone      — single user profile + wallet + trade history
  *   GET  /api/v1/admin/fraud-flags       — accounts flagged by fraud rules (status filter + pagination)
  *   PATCH /api/v1/admin/fraud-flags/:id  — close a flag as reviewed or dismissed
+ *   GET  /api/v1/admin/audit-logs        — immutable admin action trail (super_admin only)
+ *
+ * Every state-changing route records an entry in `audit_logs` (actor, action,
+ * target, before/after state, request context) via services/auditLog.ts.
  */
 
 import { Router } from "express";
@@ -29,12 +33,20 @@ import {
   resolveDisputeSchema,
   reviewFraudFlagSchema,
   paginationSchema,
+  auditLogQuerySchema,
   type ResolveDisputeInput,
   type ReviewFraudFlagInput,
 } from "../schemas";
 import type { TradeOffer } from "../types/trade";
 import { FraudDetectionService, type FraudFlagStatus } from "../services/fraudDetection";
 import type { AuthenticatedRequest } from "../middleware/authenticate";
+import {
+  auditActor,
+  auditContext,
+  listAuditLogs,
+  recordAuditLog,
+  recordAuditLogAfterCommit,
+} from "../services/auditLog";
 
 const router = Router();
 
@@ -262,6 +274,21 @@ router.post(
          WHERE id = $2
          RETURNING *`,
         [newStatus, id]
+      );
+
+      // Same transaction as the status change: the audit row and the
+      // resolution commit or roll back together.
+      await recordAuditLog(
+        {
+          ...auditActor(req),
+          action: "trade.dispute_resolved",
+          targetType: "trade",
+          targetId: id!,
+          before: { status: trade.status },
+          after: { status: newStatus, resolution, txHash },
+          metadata: auditContext(req),
+        },
+        client
       );
 
       await client.query("COMMIT");
@@ -547,6 +574,22 @@ router.patch(
 
     const flag = await FraudDetectionService.reviewFraudFlag(id, reviewerId, status, note || null);
     if (flag) {
+      // reviewFraudFlag only updates rows that were 'open', so that is the
+      // prior state by construction.
+      await recordAuditLogAfterCommit({
+        ...auditActor(req),
+        action: "fraud_flag.reviewed",
+        targetType: "fraud_flag",
+        targetId: id,
+        before: { status: "open" },
+        after: {
+          status: flag.status,
+          reviewed_by: flag.reviewed_by,
+          reviewed_at: flag.reviewed_at,
+          review_note: flag.review_note,
+        },
+        metadata: auditContext(req),
+      });
       res.status(200).json({ data: flag });
       return;
     }
@@ -610,10 +653,79 @@ router.post(
       [id]
     );
 
+    await recordAuditLogAfterCommit({
+      ...auditActor(req),
+      action: "webhook.replayed",
+      targetType: "webhook_event",
+      targetId: id!,
+      before: { status: "failed" },
+      after: { status: "pending" },
+      metadata: auditContext(req),
+    });
+
     await QueueService.enqueue("process-paystack-webhook", { webhookEventId: id });
 
     res.status(202).json({ message: "Webhook re-enqueued for processing" });
   }
 );
+
+// ---------------------------------------------------------------------------
+// Audit logs (issue #539) — super_admin only, read-only
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/v1/admin/audit-logs
+ *   ?actorId=&action=&targetType=&targetId=&from=&to=&page=1&limit=20
+ *
+ * Immutable trail of state-changing admin actions, newest first. Restricted
+ * to super_admin: regular admins are the subjects of this log and must not
+ * be able to read (or infer) what is recorded about them.
+ */
+router.get(
+  "/audit-logs",
+  authenticate,
+  authorize("super_admin"),
+  async (req, res) => {
+    const parsed = auditLogQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: "Invalid query parameters",
+        details: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { page, limit, actorId, action, targetType, targetId, from, to } = parsed.data;
+    const { entries, total } = await listAuditLogs({
+      actorId,
+      action,
+      targetType,
+      targetId,
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
+      limit,
+      offset: (page - 1) * limit,
+    });
+
+    res.status(200).json({
+      data: entries,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
+  }
+);
+
+/**
+ * Audit entries are append-only. Answer any attempt to create, edit or delete
+ * one through the API with 405 instead of a generic 404, so the intent is
+ * explicit (the database trigger in migration 013 enforces the same rule).
+ */
+router.all(["/audit-logs", "/audit-logs/:id"], (req, res, next) => {
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") {
+    next();
+    return;
+  }
+  res.setHeader("Allow", "GET");
+  res.status(405).json({ error: "Audit logs are immutable" });
+});
 
 export default router;

@@ -6,6 +6,7 @@
  * emitting clear errors or warnings before server boot.
  */
 import logger from "../utils/logger";
+import { validateCorsEnv } from "./cors";
 
 // JWT_SECRET must be at least 32 characters so it provides ≥256-bit effective
 // entropy when used as an HMAC-SHA256 secret.  A shorter secret allows
@@ -35,7 +36,7 @@ export const OPTIONAL_ENV_VARS = [
   "HORIZON_URL",
   "SOROBAN_RPC_URL",
   "REDIS_URL",
-  "CORS_ORIGIN",
+  "CORS_ALLOWED_ORIGINS",
   "PLATFORM_FEE_PERCENT",
   "MAX_TRADES_PER_HOUR",
   "MAX_DEPOSITS_PER_DAY",
@@ -102,6 +103,10 @@ export function validateEnv(
   if (env["NODE_ENV"] === "production" && !env["REDIS_URL"]) {
     errors.push("[startup] REDIS_URL is required in production");
   }
+
+  // CORS allowlist — wildcard origins are refused in production and every
+  // entry must be a well-formed http(s) origin (issue #539).
+  errors.push(...validateCorsEnv(env));
 
   // Storage validation — when STORAGE_PROVIDER is s3 (or unset, since s3 is the
   // default) the S3_BUCKET and S3_REGION variables are mandatory (issue #248).

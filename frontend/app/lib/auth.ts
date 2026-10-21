@@ -30,7 +30,12 @@ const TOKEN_KEY = "stellar-raide-stellar-raide-airflex:token";
 const SESSION_COOKIE = "session";
 
 /** Account roles recognised by the client. */
-export type UserRole = "user" | "admin";
+export type UserRole = "user" | "admin" | "super_admin";
+
+/** True for roles allowed into the admin area (super_admin inherits admin, #539). */
+export function isAdminRole(role: string | null | undefined): boolean {
+  return role === "admin" || role === "super_admin";
+}
 
 /** Decodes a JWT payload segment (base64url) without verifying the signature. */
 function readPayload(token: string): Record<string, unknown> | null {
@@ -65,7 +70,7 @@ function readExpiry(token: string): number | null {
 export function readRole(token: string | null | undefined): UserRole | null {
   if (!token) return null;
   const role = readPayload(token)?.role;
-  return role === "admin" || role === "user" ? role : null;
+  return role === "admin" || role === "super_admin" || role === "user" ? role : null;
 }
 
 function writeSessionCookie(token: string): void {

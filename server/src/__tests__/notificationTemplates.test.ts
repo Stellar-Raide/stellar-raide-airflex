@@ -23,6 +23,7 @@ const FULL_PAYLOADS: Record<NotificationTemplateKey, TemplatePayload> = {
   WITHDRAWAL_PROCESSED: { amount: 5000 },
   WITHDRAWAL_FAILED: { amount: 5000, reason: "Bank declined the transfer" },
   WEBHOOK_FAILED: { eventId: "evt_42", eventType: "charge.success" },
+  DATA_EXPORT_READY: { days: 7 },
 };
 
 const TEMPLATE_KEYS = Object.keys(NOTIFICATION_TEMPLATES) as NotificationTemplateKey[];
@@ -47,6 +48,9 @@ const EXPECTED_SMS: Record<NotificationTemplateKey, string> = {
   WEBHOOK_FAILED:
     "AirFlex admin: Paystack webhook evt_42 (charge.success) failed after retries. " +
     "Inspect /api/admin/webhooks and replay if needed.",
+  DATA_EXPORT_READY:
+    "AirFlex: Your personal data export is ready. Download it from your " +
+    "profile in the app within 7 days.",
 };
 
 // ---------------------------------------------------------------------------

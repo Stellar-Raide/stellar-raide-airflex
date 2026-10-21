@@ -1,4 +1,9 @@
 const createNextIntlPlugin = require("next-intl/plugin");
+const {
+  buildContentSecurityPolicy,
+  reportingEndpoints,
+  STATIC_SECURITY_HEADERS,
+} = require("./lib/cspPolicy");
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
@@ -48,16 +53,23 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Enforced CSP on every response (#539). Directives are shared with
+  // middleware.ts via lib/cspPolicy.js; the middleware swaps in a per-request
+  // nonce variant for HTML pages.
   async headers() {
     return [
       {
         source: "/(.*)",
         headers: [
           {
-            key: "Content-Security-Policy-Report-Only",
-            value:
-              "default-src 'self'; report-uri /api/csp-report",
+            key: "Content-Security-Policy",
+            value: buildContentSecurityPolicy(),
           },
+          {
+            key: "Reporting-Endpoints",
+            value: reportingEndpoints(),
+          },
+          ...STATIC_SECURITY_HEADERS,
         ],
       },
     ];

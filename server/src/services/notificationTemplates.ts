@@ -53,6 +53,15 @@ export const NOTIFICATION_TEMPLATES = {
   WEBHOOK_FAILED:
     "AirFlex admin: Paystack webhook {eventId} ({eventType}) failed after retries. " +
     "Inspect /api/admin/webhooks and replay if needed.",
+
+  /**
+   * Sent when a requested GDPR data export has been generated (issue #539).
+   * Deliberately carries no download link: SMS is not a secure channel and
+   * phone numbers get recycled, so the user downloads from inside the app.
+   */
+  DATA_EXPORT_READY:
+    "AirFlex: Your personal data export is ready. Download it from your " +
+    "profile in the app within {days} days.",
 } as const;
 
 export type NotificationTemplateKey = keyof typeof NOTIFICATION_TEMPLATES;
