@@ -1,10 +1,15 @@
 import { Router } from "express";
-import { randomUUID } from "crypto";
 import pool from "../db";
 import { authenticate, AuthenticatedRequest } from "../middleware/authenticate";
 import { decryptSecret, getWalletBalance } from "../services/stellar";
+import {
+  executeIdempotentWithdrawal,
+  parseIdempotencyKey,
+  type WithdrawalOutcome,
+} from "../services/wallet";
 import { QueueService } from "../jobs";
 import { NotificationService } from "../services/notifications";
+import logger from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // OpenTelemetry tracer (no-op fallback when packages not installed)
@@ -267,6 +272,11 @@ router.get(
  *
  * Body: { amount: number, bank_code: string, account_number: string, account_name: string }
  *
+ * Headers: `Idempotency-Key` (required, issue #479). The first request with a
+ * key performs the withdrawal; a retry with the same key and body gets the
+ * same response back (with `Idempotent-Replayed: true`) and debits nothing.
+ * Reusing a key with a different body is rejected with 422.
+ *
  * Response 202:
  *   { withdrawalId: string, reference: string, status: "pending" }
  */
@@ -275,6 +285,13 @@ router.post(
   authenticate,
   async (req, res) => {
     const { sub: userId } = (req as AuthenticatedRequest).user;
+
+    const keyCheck = parseIdempotencyKey(req.header("idempotency-key"));
+    if (!keyCheck.ok) {
+      res.status(400).json({ error: keyCheck.error });
+      return;
+    }
+
     const { amount, bank_code, account_number, account_name } = req.body as {
       amount: unknown;
       bank_code: unknown;
@@ -314,71 +331,52 @@ router.post(
       return;
     }
 
-    const client = await pool.connect();
+    let outcome: WithdrawalOutcome;
     try {
-      await client.query("BEGIN");
-
-      // ---- check fiat balance (row-lock the wallet row) -------------------
-      const { rows: walletRows } = await client.query<{ fiat_balance: string }>(
-        `SELECT fiat_balance FROM wallets WHERE user_id = $1 LIMIT 1 FOR UPDATE`,
-        [userId]
-      );
-
-      if (!walletRows.length) {
-        await client.query("ROLLBACK");
-        res.status(404).json({ error: "Wallet not found" });
-        return;
-      }
-
-      const fiatBalance = parseFloat(walletRows[0]!.fiat_balance);
-      if (amountNum > fiatBalance) {
-        await client.query("ROLLBACK");
-        res.status(400).json({ error: "Insufficient fiat balance" });
-        return;
-      }
-
-      // ---- create withdrawal record in `pending` state --------------------
-      const reference = `stellar-raide-stellar-raide-airflex-wd-${randomUUID()}`;
-      const { rows: wdRows } = await client.query<{ id: string }>(
-        `INSERT INTO withdrawals
-           (user_id, amount, bank_code, account_number, account_name, reference, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending')
-         RETURNING id`,
-        [userId, amountNum, bank_code.trim(), account_number.trim(), account_name.trim(), reference]
-      );
-      const withdrawalId = wdRows[0]!.id;
-
-      // ---- deduct fiat balance atomically ---------------------------------
-      await client.query(
-        `UPDATE wallets
-         SET fiat_balance = fiat_balance - $1
-         WHERE user_id = $2`,
-        [amountNum, userId]
-      );
-
-      await client.query("COMMIT");
-
-      // ---- enqueue background job (outside the transaction) ---------------
-      await QueueService.enqueue("process-withdrawal", { withdrawalId });
-
-      console.info(
-        `[wallet] Withdrawal queued: id=${withdrawalId} user=${userId} amount=${amountNum} ref=${reference}`
-      );
-
-      res.status(202).json({
-        withdrawalId,
-        reference,
-        status: "pending",
-        message:
-          "Withdrawal request accepted. Funds will arrive within 1–2 business days.",
+      outcome = await executeIdempotentWithdrawal(userId, keyCheck.key, {
+        amount: amountNum,
+        bankCode: bank_code.trim(),
+        accountNumber: account_number.trim(),
+        accountName: account_name.trim(),
       });
     } catch (err) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      console.error("[wallet] Withdraw error:", (err as Error).message);
+      logger.error({ err, userId }, "[wallet] Withdraw error");
       res.status(500).json({ error: "Withdrawal request failed. Please try again." });
-    } finally {
-      client.release();
+      return;
     }
+
+    if (outcome.replayed) {
+      logger.info({ userId }, "[wallet] Replayed withdrawal response for a retried Idempotency-Key");
+      res.setHeader("Idempotent-Replayed", "true");
+    }
+
+    // ---- enqueue background job (only for a withdrawal created just now) --
+    if (outcome.withdrawalId) {
+      try {
+        await QueueService.enqueue("process-withdrawal", {
+          withdrawalId: outcome.withdrawalId,
+        });
+      } catch (err) {
+        logger.error(
+          { err, userId, withdrawalId: outcome.withdrawalId },
+          "[wallet] Failed to queue withdrawal"
+        );
+        res.status(500).json({ error: "Withdrawal request failed. Please try again." });
+        return;
+      }
+
+      logger.info(
+        {
+          withdrawalId: outcome.withdrawalId,
+          userId,
+          amount: amountNum,
+          reference: outcome.body["reference"],
+        },
+        "[wallet] Withdrawal queued"
+      );
+    }
+
+    res.status(outcome.status).json(outcome.body);
   }
 );
 

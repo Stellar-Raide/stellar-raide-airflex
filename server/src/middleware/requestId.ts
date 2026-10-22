@@ -1,20 +1,31 @@
 import { Request, Response, NextFunction } from "express";
 import { v4 as uuidv4 } from "uuid";
+import { runWithRequestContext } from "../utils/requestContext";
 
 /**
- * requestId middleware generates a UUID v4 per request and sets it on:
- * - res.locals.requestId (for use in route handlers and logging)
- * - X-Request-Id response header (for client-side correlation)
+ * An inbound X-Request-Id is reused (so a trace can span a gateway or another
+ * service) only if it is short and limited to safe characters; anything else
+ * is replaced, so it can't be used to inject content into logs.
+ */
+const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{8,128}$/;
+
+/**
+ * requestId middleware assigns a correlation ID to every request and sets it on:
+ * - res.locals.requestId (for use in route handlers)
+ * - the X-Request-Id response header (for client-side correlation)
+ * - the async request context, so every log line written while handling the
+ *   request carries the same `requestId` (see utils/logger.ts, issue #481)
  */
 export function requestId(
   req: Request,
   res: Response,
   next: NextFunction
 ): void {
-  const requestId = uuidv4();
+  const incoming = req.header("x-request-id");
+  const id = incoming && SAFE_REQUEST_ID.test(incoming) ? incoming : uuidv4();
 
-  res.locals.requestId = requestId;
-  res.setHeader("X-Request-Id", requestId);
+  res.locals.requestId = id;
+  res.setHeader("X-Request-Id", id);
 
-  next();
+  runWithRequestContext({ requestId: id }, () => next());
 }

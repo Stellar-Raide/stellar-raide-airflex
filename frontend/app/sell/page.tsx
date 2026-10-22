@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect, type FormEvent, type ChangeEvent } from "react";
+import { useFormatter, useTranslations } from "next-intl";
 import { getToken, isAuthenticated } from "../lib/auth";
 import type { TradeOffer } from "../../../server/src/types/trade";
 import { CurrencyInput } from "../../components/CurrencyInput";
 import { toStroops } from "@stellar-raide-stellar-raide-airflex/shared/units";
 import { getCachedConversionRate, setCachedConversionRate } from "./ratesCache";
 import { OfflineOrderList } from "./OfflineOrderList";
+import { ASSET_TYPES, NAIRA_FORMAT, assetLabel, durationLabel } from "./assetLabels";
 import { enqueueOrder, newIdempotencyKey } from "../offline/orderQueue";
 import { useOfflineOrderQueue } from "../offline/useOfflineOrderQueue";
 
@@ -33,26 +35,11 @@ function storeKycStatus(status: string): void {
 // Constants
 // ---------------------------------------------------------------------------
 
-const ASSET_OPTIONS = [
-  { value: "MTN_AIRTIME",     label: "MTN — Airtime" },
-  { value: "MTN_DATA",        label: "MTN — Data" },
-  { value: "GLO_AIRTIME",     label: "Glo — Airtime" },
-  { value: "GLO_DATA",        label: "Glo — Data" },
-  { value: "AIRTEL_AIRTIME",  label: "Airtel — Airtime" },
-  { value: "AIRTEL_DATA",     label: "Airtel — Data" },
-  { value: "9MOBILE_AIRTIME", label: "9mobile — Airtime" },
-  { value: "9MOBILE_DATA",    label: "9mobile — Data" },
-] as const;
+/** Listing durations offered, in hours. */
+const EXPIRY_HOURS = [1, 6, 12, 24, 48, 72, 168] as const;
 
-const EXPIRY_OPTIONS = [
-  { value: 1,   label: "1 hour" },
-  { value: 6,   label: "6 hours" },
-  { value: 12,  label: "12 hours" },
-  { value: 24,  label: "24 hours" },
-  { value: 48,  label: "2 days" },
-  { value: 72,  label: "3 days" },
-  { value: 168, label: "7 days" },
-] as const;
+/** Largest amount a single listing may ask for, in naira. */
+const MAX_LISTING_NAIRA = 1_000_000;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,11 +51,29 @@ interface FormFields {
   expiresInHours: number;
 }
 
+/**
+ * Validation errors are held as message keys under `Sell.errors`, not as
+ * text, so they re-render in the new language when the locale changes.
+ */
+type FieldErrorKey =
+  | "assetTypeRequired"
+  | "amountRequired"
+  | "amountPositive"
+  | "amountMax"
+  | "expiryRequired";
+
 interface FieldErrors {
-  assetType?: string;
-  amount?: string;
-  expiresInHours?: string;
+  assetType?: FieldErrorKey;
+  amount?: FieldErrorKey;
+  expiresInHours?: FieldErrorKey;
 }
+
+/** A message key of ours, or an error message the API sent back verbatim. */
+type ServerError =
+  | { key: "kycRequired" | "generic" | "unexpectedResponse" }
+  | { text: string };
+
+type QueuedNotice = "queuedOffline" | "queuedConnectionLost";
 
 interface CreateTradeResponse {
   data?: TradeOffer;
@@ -84,20 +89,20 @@ function validate(fields: FormFields): FieldErrors {
   const errors: FieldErrors = {};
 
   if (!fields.assetType) {
-    errors.assetType = "Please select an asset type.";
+    errors.assetType = "assetTypeRequired";
   }
 
   const numericAmount = parseFloat(fields.amount);
   if (!fields.amount.trim()) {
-    errors.amount = "Amount is required.";
+    errors.amount = "amountRequired";
   } else if (isNaN(numericAmount) || numericAmount <= 0) {
-    errors.amount = "Amount must be greater than zero.";
-  } else if (numericAmount > 1_000_000) {
-    errors.amount = "Amount cannot exceed ₦1,000,000 per listing.";
+    errors.amount = "amountPositive";
+  } else if (numericAmount > MAX_LISTING_NAIRA) {
+    errors.amount = "amountMax";
   }
 
   if (!fields.expiresInHours || fields.expiresInHours < 1) {
-    errors.expiresInHours = "Please select an expiry duration.";
+    errors.expiresInHours = "expiryRequired";
   }
 
   return errors;
@@ -170,9 +175,9 @@ const inputError =
 // ---------------------------------------------------------------------------
 
 function SuccessPanel({ trade }: { trade: TradeOffer }) {
-  const assetLabel =
-    ASSET_OPTIONS.find((o) => o.value === trade.asset_type)?.label ??
-    trade.asset_type;
+  const t = useTranslations("Sell");
+  const format = useFormatter();
+  const statusKey = `tradeStatus.${trade.status}`;
 
   return (
     <div
@@ -183,29 +188,31 @@ function SuccessPanel({ trade }: { trade: TradeOffer }) {
       <div className="flex flex-col items-center gap-3 text-center">
         <span aria-hidden="true" className="text-5xl">🎉</span>
         <h2 className="text-2xl font-extrabold text-gray-900 dark:text-gray-100">
-          Listing Created!
+          {t("success.title")}
         </h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Your trade offer is now live on the AirFlex marketplace.
+          {t("success.body")}
         </p>
       </div>
 
       <dl className="divide-y divide-green-100 rounded-xl border border-green-200 bg-white dark:divide-green-800 dark:border-green-800 dark:bg-gray-800">
-        <DetailRow label="Trade ID">
+        <DetailRow label={t("success.tradeId")}>
           <span className="break-all font-mono text-xs text-gray-700 dark:text-gray-300">
             {trade.id}
           </span>
         </DetailRow>
-        <DetailRow label="Asset">{assetLabel}</DetailRow>
-        <DetailRow label="Amount">₦{trade.amount.toLocaleString()}</DetailRow>
-        <DetailRow label="Status">
+        <DetailRow label={t("success.asset")}>{assetLabel(t, trade.asset_type)}</DetailRow>
+        <DetailRow label={t("success.amount")}>
+          {format.number(Number(trade.amount), NAIRA_FORMAT)}
+        </DetailRow>
+        <DetailRow label={t("success.status")}>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/40 dark:text-green-300">
             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-green-500 inline-block" />
-            {trade.status}
+            {t.has(statusKey) ? t(statusKey) : trade.status}
           </span>
         </DetailRow>
-        <DetailRow label="Expires">
-          {new Date(trade.expires_at).toLocaleString("en-NG", {
+        <DetailRow label={t("success.expires")}>
+          {format.dateTime(new Date(trade.expires_at), {
             day: "numeric",
             month: "short",
             year: "numeric",
@@ -220,14 +227,14 @@ function SuccessPanel({ trade }: { trade: TradeOffer }) {
           href="/"
           className="flex-1 inline-flex items-center justify-center rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
         >
-          View marketplace
+          {t("success.viewMarketplace")}
         </a>
         <button
           type="button"
           onClick={() => window.location.reload()}
           className="flex-1 inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
         >
-          Create another listing
+          {t("success.createAnother")}
         </button>
       </div>
     </div>
@@ -248,6 +255,10 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 // ---------------------------------------------------------------------------
 
 export default function SellPage() {
+  const t = useTranslations("Sell");
+  const format = useFormatter();
+  const naira = (value: number) => format.number(value, NAIRA_FORMAT);
+
   const [authChecked, setAuthChecked] = useState(false);
   const [kycStatus, setKycStatus] = useState<string>("unverified");
   const [kycLoading, setKycLoading] = useState(true);
@@ -258,12 +269,13 @@ export default function SellPage() {
     expiresInHours: 24,
   });
   const [errors, setErrors]             = useState<FieldErrors>({});
-  const [serverError, setServerError]   = useState<string | null>(null);
+  const [serverError, setServerError]   = useState<ServerError | null>(null);
   const [loading, setLoading]           = useState(false);
   const [createdTrade, setCreatedTrade] = useState<TradeOffer | null>(null);
   const [offline, setOffline]           = useState(false);
-  const [queuedNotice, setQueuedNotice] = useState<string | null>(null);
-  const [flushedNotice, setFlushedNotice] = useState<string | null>(null);
+  const [queuedNotice, setQueuedNotice] = useState<QueuedNotice | null>(null);
+  // Number of queued listings sent on reconnect; shown as a notice.
+  const [flushedCount, setFlushedCount] = useState<number | null>(null);
 
   const apiUrl = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:3001";
 
@@ -271,11 +283,8 @@ export default function SellPage() {
     apiUrl,
     getToken,
     onFlushed: (result) => {
-      const n = result.sentKeys.length;
       setQueuedNotice(null);
-      setFlushedNotice(
-        `${n} queued ${n === 1 ? "listing was" : "listings were"} sent now that you are back online.`,
-      );
+      setFlushedCount(result.sentKeys.length);
     },
   });
 
@@ -367,7 +376,7 @@ export default function SellPage() {
     setServerError(null);
 
     if (kycStatus !== "verified") {
-      setServerError("Complete KYC verification before creating a listing.");
+      setServerError({ key: "kycRequired" });
       return;
     }
 
@@ -396,7 +405,7 @@ export default function SellPage() {
     // that did reach the server is never listed twice when the queue replays it.
     const idempotencyKey = newIdempotencyKey();
 
-    function queueOrder(notice: string) {
+    function queueOrder(notice: QueuedNotice) {
       enqueueOrder({
         idempotencyKey,
         assetType: fields.assetType,
@@ -404,13 +413,13 @@ export default function SellPage() {
         amountNaira,
         expiresInHours: fields.expiresInHours,
       });
-      setFlushedNotice(null);
+      setFlushedCount(null);
       setQueuedNotice(notice);
       setFields({ assetType: "", amount: "", expiresInHours: 24 });
     }
 
     if (!window.navigator.onLine) {
-      queueOrder("You are offline. Your listing is saved on this device and will be sent when you reconnect.");
+      queueOrder("queuedOffline");
       return;
     }
 
@@ -442,12 +451,12 @@ export default function SellPage() {
         const detail = data.details
           ? Object.values(data.details).flat()[0]
           : data.error;
-        setServerError(detail ?? "Something went wrong. Please try again.");
+        setServerError(detail ? { text: detail } : { key: "generic" });
         return;
       }
 
       if (!data.data) {
-        setServerError("Unexpected server response. Please try again.");
+        setServerError({ key: "unexpectedResponse" });
         return;
       }
 
@@ -455,7 +464,7 @@ export default function SellPage() {
     } catch {
       // The request never got an answer. Keep the order instead of losing it:
       // it is replayed with the same idempotency key once we are online.
-      queueOrder("Connection lost. Your listing is saved on this device and will be sent when you reconnect.");
+      queueOrder("queuedConnectionLost");
     } finally {
       setLoading(false);
     }
@@ -463,8 +472,8 @@ export default function SellPage() {
 
   if (!authChecked || kycLoading) {
     return (
-      <div className="flex items-center justify-center py-32" aria-label="Checking authentication">
-        <Spinner label="Checking authentication" />
+      <div className="flex items-center justify-center py-32" aria-label={t("checkingAuth")}>
+        <Spinner label={t("checkingAuth")} />
       </div>
     );
   }
@@ -476,6 +485,9 @@ export default function SellPage() {
     conversionRate && conversionRate > 0
       ? (numericAmount / conversionRate).toFixed(2)
       : "0.00";
+
+  const fieldError = (key: FieldErrorKey | undefined) =>
+    key ? t(`errors.${key}`, { max: naira(MAX_LISTING_NAIRA) }) : undefined;
 
   if (createdTrade) {
     return <SuccessPanel trade={createdTrade} />;
@@ -489,7 +501,7 @@ export default function SellPage() {
           data-testid="offline-banner"
           className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-medium text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300"
         >
-          You are offline. Listings you create are saved on this device and sent when you reconnect.
+          {t("offlineBanner")}
         </div>
       )}
       {queuedNotice && (
@@ -498,16 +510,16 @@ export default function SellPage() {
           data-testid="queued-notice"
           className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300"
         >
-          {queuedNotice}
+          {t(queuedNotice)}
         </div>
       )}
-      {flushedNotice && (
+      {flushedCount !== null && (
         <div
           role="status"
           data-testid="flushed-notice"
           className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300"
         >
-          {flushedNotice}
+          {t("flushedNotice", { count: flushedCount })}
         </div>
       )}
       <OfflineOrderList
@@ -520,14 +532,13 @@ export default function SellPage() {
       {/* Page header */}
       <div className="mb-8">
         <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-violet-500 dark:text-violet-400">
-          New listing
+          {t("eyebrow")}
         </p>
         <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-gray-100">
-          Sell Airtime or Data
+          {t("title")}
         </h1>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          Fill in the details below. Your listing will be registered on the
-          Stellar escrow contract and visible to buyers immediately.
+          {t("intro")}
         </p>
       </div>
 
@@ -538,16 +549,14 @@ export default function SellPage() {
           className="mb-8 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 dark:border-amber-800/60 dark:bg-amber-950/30"
         >
           <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
-            {kycStatus === "pending"
-              ? "KYC Pending Review — listing creation is disabled until your verification is approved."
-              : "Seller verification required — complete KYC before creating a listing."}
+            {kycStatus === "pending" ? t("kycPending") : t("kycRequired")}
           </p>
           {kycStatus !== "pending" && (
             <a
               href="/kyc"
               className="mt-2 inline-block text-sm font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-400"
             >
-              Complete KYC verification →
+              {t("completeKyc")}
             </a>
           )}
         </div>
@@ -556,13 +565,13 @@ export default function SellPage() {
       {/* How it works */}
       <div className="mb-8 flex flex-col gap-2 rounded-xl border border-violet-100 bg-violet-50 px-5 py-4 dark:border-violet-800 dark:bg-violet-900/20">
         <p className="text-xs font-semibold uppercase tracking-widest text-violet-600 dark:text-violet-400">
-          How it works
+          {t("howItWorks")}
         </p>
         <ol className="mt-1 flex flex-col gap-1 text-sm text-violet-800 list-decimal list-inside dark:text-violet-300">
-          <li>Submit this form — your listing goes live on-chain.</li>
-          <li>A buyer accepts and deposits funds into escrow.</li>
-          <li>Send the airtime / data to the buyer.</li>
-          <li>Platform confirms delivery and releases your payment.</li>
+          <li>{t("step1")}</li>
+          <li>{t("step2")}</li>
+          <li>{t("step3")}</li>
+          <li>{t("step4")}</li>
         </ol>
       </div>
 
@@ -575,9 +584,9 @@ export default function SellPage() {
         {/* Asset type */}
         <Field
           id="assetType"
-          label="Asset type"
-          hint="The network and type of telecom value you are selling."
-          error={errors.assetType}
+          label={t("assetTypeLabel")}
+          hint={t("assetTypeHint")}
+          error={fieldError(errors.assetType)}
         >
           <select
             id="assetType"
@@ -589,9 +598,9 @@ export default function SellPage() {
             aria-invalid={errors.assetType ? "true" : undefined}
             className={`${inputBase} ${errors.assetType ? inputError : inputNormal} appearance-none bg-[url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")] bg-no-repeat bg-[right_1rem_center]`}
           >
-            <option value="" disabled>Select an asset type…</option>
-            {ASSET_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            <option value="" disabled>{t("assetTypePlaceholder")}</option>
+            {ASSET_TYPES.map((value) => (
+              <option key={value} value={value}>{assetLabel(t, value)}</option>
             ))}
           </select>
         </Field>
@@ -599,9 +608,9 @@ export default function SellPage() {
         {/* Amount */}
         <Field
           id="amount"
-          label="Amount (₦)"
-          hint="How much the buyer will pay. Must be greater than zero."
-          error={errors.amount}
+          label={t("amountLabel")}
+          hint={t("amountHint")}
+          error={fieldError(errors.amount)}
         >
           <CurrencyInput
             id="amount"
@@ -621,7 +630,7 @@ export default function SellPage() {
               aria-live="polite"
               className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400"
             >
-              ≈ {usdcPreview} USDC
+              {t("conversionPreview", { amount: usdcPreview })}
             </p>
           )}
         </Field>
@@ -629,16 +638,16 @@ export default function SellPage() {
         {/* Expiry */}
         <Field
           id="expiresInHours"
-          label="Listing duration"
-          hint="How long your listing stays active. Buyers can only purchase before this expires."
-          error={errors.expiresInHours}
+          label={t("durationLabel")}
+          hint={t("durationHint")}
+          error={fieldError(errors.expiresInHours)}
         >
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {EXPIRY_OPTIONS.map((opt) => (
+            {EXPIRY_HOURS.map((hours) => (
               <label
-                key={opt.value}
+                key={hours}
                 className={`flex cursor-pointer items-center justify-center rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
-                  fields.expiresInHours === opt.value
+                  fields.expiresInHours === hours
                     ? "border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 dark:border-violet-500"
                     : "border-gray-200 bg-white text-gray-600 hover:border-violet-300 hover:text-violet-600 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400 dark:hover:border-violet-500 dark:hover:text-violet-400"
                 } ${loading || kycBlocked ? "cursor-not-allowed opacity-50" : ""}`}
@@ -646,13 +655,13 @@ export default function SellPage() {
                 <input
                   type="radio"
                   name="expiresInHours"
-                  value={opt.value}
-                  checked={fields.expiresInHours === opt.value}
+                  value={hours}
+                  checked={fields.expiresInHours === hours}
                   onChange={handleChange}
                   disabled={loading || kycBlocked}
                   className="sr-only"
                 />
-                {opt.label}
+                {durationLabel(t, hours)}
               </label>
             ))}
           </div>
@@ -666,21 +675,16 @@ export default function SellPage() {
             aria-live="polite"
             className="rounded-xl border border-gray-100 bg-gray-50 px-5 py-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-700/50 dark:text-gray-400"
           >
-            <p className="font-medium text-gray-700 dark:text-gray-300">Listing preview</p>
+            <p className="font-medium text-gray-700 dark:text-gray-300">{t("previewTitle")}</p>
             <p className="mt-1">
-              Selling{" "}
-              <strong className="text-gray-900 dark:text-gray-100">
-                {ASSET_OPTIONS.find((o) => o.value === fields.assetType)?.label ?? fields.assetType}
-              </strong>{" "}
-              for{" "}
-              <strong className="text-gray-900 dark:text-gray-100">
-                ₦{parseFloat(fields.amount).toLocaleString()}
-              </strong>
-              , expires in{" "}
-              <strong className="text-gray-900 dark:text-gray-100">
-                {EXPIRY_OPTIONS.find((o) => o.value === fields.expiresInHours)?.label}
-              </strong>
-              .
+              {t.rich("previewBody", {
+                asset: assetLabel(t, fields.assetType),
+                amount: naira(parseFloat(fields.amount)),
+                duration: durationLabel(t, fields.expiresInHours),
+                strong: (chunks) => (
+                  <strong className="text-gray-900 dark:text-gray-100">{chunks}</strong>
+                ),
+              })}
             </p>
           </div>
         )}
@@ -691,7 +695,7 @@ export default function SellPage() {
             role="alert"
             className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
           >
-            {serverError}
+            {"key" in serverError ? t(`errors.${serverError.key}`) : serverError.text}
           </div>
         )}
 
@@ -703,13 +707,13 @@ export default function SellPage() {
         >
           {loading ? (
             <>
-              <Spinner label="Creating listing" />
-              Creating listing…
+              <Spinner label={t("submitting")} />
+              {t("submitting")}
             </>
           ) : offline ? (
-            "Save listing offline"
+            t("submitOffline")
           ) : (
-            "Create listing"
+            t("submit")
           )}
         </button>
       </form>

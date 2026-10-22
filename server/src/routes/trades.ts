@@ -1,8 +1,15 @@
-import { Router, type Response } from "express";
+import { Router, type Request, type Response } from "express";
 import { v4 as uuidv4 } from "uuid";
+import { SpanStatusCode } from "@opentelemetry/api";
 import { asStroops, fromStroops, toStroops } from "@stellar-raide-stellar-raide-airflex/shared/units";
 import pool from "../db";
 import { cache } from "../services/cache";
+import {
+  setTradeAttributes,
+  withSpan,
+  withTradeSpan,
+  type TradeStage,
+} from "../telemetry";
 import { authenticate, optionalAuthenticate, AuthenticatedRequest } from "../middleware/authenticate";
 import { validate } from "../middleware/validate";
 import {
@@ -39,6 +46,42 @@ export type PublicTradeOffer = Omit<TradeOffer, "seller_id"> & {
 };
 
 const router = Router();
+
+/**
+ * Runs a trade lifecycle handler inside its stage span (issue #482).
+ *
+ * The span carries the trade id from the URL (when there is one), the
+ * caller's user id and the HTTP status the request ended with. Thrown errors
+ * are recorded by `withTradeSpan`; requests the handler rejects itself
+ * (a 4xx/5xx response, no throw) get a `trade.rejected` event so they are
+ * visible in the trace too.
+ */
+function tracedStage(
+  stage: TradeStage,
+  handler: (req: Request, res: Response) => Promise<void>
+) {
+  return (req: Request, res: Response): Promise<void> =>
+    withTradeSpan(
+      stage,
+      {
+        tradeId: req.params["id"],
+        userId: (req as unknown as AuthenticatedRequest).user?.sub,
+      },
+      async (span) => {
+        await handler(req, res);
+
+        span.setAttribute("http.response.status_code", res.statusCode);
+        if (res.statusCode >= 400) {
+          span.addEvent("trade.rejected", {
+            "http.response.status_code": res.statusCode,
+          });
+        }
+        if (res.statusCode >= 500) {
+          span.setStatus({ code: SpanStatusCode.ERROR });
+        }
+      }
+    );
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/v1/trades
@@ -150,7 +193,7 @@ router.post(
   "/",
   authenticate,
   validate(createTradeSchema),
-  async (req, res) => {
+  tracedStage("create", async (req, res) => {
     const { assetType, amount, expiresInHours } = req.body as CreateTradeInput;
     const { sub: sellerId, stellarPublicKey } = (req as unknown as AuthenticatedRequest).user;
 
@@ -217,15 +260,22 @@ router.post(
     const amountStroops = asStroops(amount);
 
     // Call Soroban create_listing — may throw if contract call fails
-    const contractListingId = await createListing({
-      sellerPublicKey: stellarPublicKey,
-      sellerSecretKey: walletRows[0].stellar_secret_key,
-      assetType,
-      amountStroops,
-      expiresAt,
-    });
+    const sellerSecretKey = walletRows[0].stellar_secret_key;
+    const contractListingId = await withSpan(
+      "trade.create.contract_listing",
+      { "trade.asset_type": assetType },
+      () =>
+        createListing({
+          sellerPublicKey: stellarPublicKey,
+          sellerSecretKey,
+          assetType,
+          amountStroops,
+          expiresAt,
+        })
+    );
 
     const tradeId = uuidv4();
+    setTradeAttributes({ tradeId });
 
     // The platform ledger (`trade_offers`, wallets, `transactions`) is
     // denominated in naira, so the amount the seller quoted in naira is what is
@@ -240,6 +290,7 @@ router.post(
     );
 
     const responseBody = { data: rows[0] };
+    setTradeAttributes({ status: rows[0]?.status });
 
     if (cacheKey) {
       // 24-hour TTL for idempotency key response
@@ -251,7 +302,7 @@ router.post(
     }
 
     res.status(201).json(responseBody);
-  }
+  })
 );
 
 // ---------------------------------------------------------------------------
@@ -401,7 +452,7 @@ router.post(
   "/:id/buy",
   authenticate,
   validate(buyTradeSchema),
-  async (req, res) => {
+  tracedStage("fund", async (req, res) => {
     const { id } = req.params;
     const { sub: buyerId, stellarPublicKey } = (req as unknown as AuthenticatedRequest).user;
     const { signedXdr } = req.body as BuyTradeInput;
@@ -411,10 +462,12 @@ router.post(
 
     // Submit the envelope the buyer signed in their browser. The secret key
     // itself never reaches this server.
-    const txHash = await submitSignedTransaction({
-      signedXdr,
-      expectedSourceAccount: stellarPublicKey,
-    });
+    const txHash = await withSpan("trade.fund.submit_escrow_deposit", {}, () =>
+      submitSignedTransaction({
+        signedXdr,
+        expectedSourceAccount: stellarPublicKey,
+      })
+    );
 
     // Lock the trade in the database
     const { rows: updated } = await pool.query<TradeOffer>(
@@ -425,13 +478,15 @@ router.post(
       [buyerId, txHash, id]
     );
 
+    setTradeAttributes({ status: updated[0]?.status });
+
     // Notify the seller that their trade has been locked (best-effort)
     void NotificationService.send(trade.seller_id, "TRADE_LOCKED", {
       tradeId: id,
     });
 
     res.status(200).json({ data: updated[0] });
-  }
+  })
 );
 
 // ---------------------------------------------------------------------------
@@ -457,13 +512,15 @@ router.post(
 router.post(
   "/:id/confirm-delivery",
   authenticate,
-  async (req, res) => {
+  tracedStage("release", async (req, res) => {
     const { id } = req.params;
     const { sub: sellerId } = (req as unknown as AuthenticatedRequest).user;
 
     try {
-      // triggerVerification validates synchronously then fires async work
-      await triggerVerification(id, sellerId);
+      // triggerVerification validates synchronously then fires async work.
+      // That background work starts inside this span, so its release
+      // attempts are recorded as children of it.
+      await triggerVerification(id!, sellerId);
     } catch (err) {
       if (err instanceof VerificationError) {
         res.status(err.statusCode).json({ error: err.message });
@@ -478,7 +535,7 @@ router.post(
         "you will be notified via the event stream when complete.",
       tradeId: id,
     });
-  }
+  })
 );
 
 // ---------------------------------------------------------------------------
@@ -493,7 +550,7 @@ router.post(
   "/:id/dispute",
   authenticate,
   validate(disputeSchema),
-  asyncHandler(async (req, res) => {
+  asyncHandler(tracedStage("dispute", async (req, res) => {
     const { id } = req.params;
     const { sub: userId } = (req as unknown as AuthenticatedRequest).user;
     const { reason } = req.body as DisputeInput;
@@ -559,7 +616,7 @@ router.post(
       message: "Trade successfully disputed. An admin will review within 24 hours.",
       data: updated[0],
     });
-  })
+  }))
 );
 
 router.post(
