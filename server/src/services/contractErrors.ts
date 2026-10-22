@@ -339,5 +339,5 @@ function instantiate(code: number): ContractError {
     return new Ctor();
   }
   // Unknown code — return a generic ContractError so callers still get a typed object
-  return new ContractError(`Unknown contract error (code ${code})`, code);
+  return new ContractError("The transaction could not be completed. Please try again or contact support.", code);
 }

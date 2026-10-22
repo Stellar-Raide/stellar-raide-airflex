@@ -9,7 +9,7 @@ describe("contract error mapping", () => {
   it("uses a safe typed fallback for unknown codes and unrelated failures", () => {
     const unknown = parseContractError("Error(Contract, #999)");
     expect(unknown).toBeInstanceOf(ContractError);
-    expect(unknown?.message).toContain("Unknown contract error");
+    expect(unknown?.message).toContain("could not be completed");
     expect(parseContractError(new Error("network unavailable"))).toBeNull();
   });
 });
