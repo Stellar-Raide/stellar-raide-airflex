@@ -5,6 +5,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import Navbar from "../components/Navbar";
 import ServiceWorkerRegister from "../components/ServiceWorkerRegister";
 import { AuthProvider } from "./context/AuthContext";
+import ThemeProvider from "./context/ThemeProvider";
 import "./globals.css";
 import { SITE_DESCRIPTION, SITE_NAME, siteUrl } from "./lib/seo";
 
@@ -65,10 +66,12 @@ export default async function RootLayout({
     <html lang={locale} suppressHydrationWarning>
       <body className="bg-gray-50 text-gray-900 antialiased dark:bg-gray-900 dark:text-gray-100">
 <NextIntlClientProvider messages={messages}>
-          <AuthProvider>
-            <Navbar />
-            {children}
-          </AuthProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <Navbar />
+              {children}
+            </AuthProvider>
+          </ThemeProvider>
           {/* Registers the PWA service worker in production (issue #107) */}
           <ServiceWorkerRegister />
         </NextIntlClientProvider>
