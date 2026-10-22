@@ -31,6 +31,16 @@ export interface FlaggedAccount {
   violations: Array<{ action: string; timestamp: string; details?: unknown }>;
 }
 
+export interface FraudSignals { velocityExceeded?: boolean; deviceKnownFraud?: boolean; relatedAccounts?: number; }
+/** Deterministic, side-effect-free decision used by request handlers and tests. */
+export function evaluateFraudSignals(signals: FraudSignals): { blocked: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (signals.velocityExceeded) reasons.push("velocity");
+  if (signals.deviceKnownFraud) reasons.push("device");
+  if ((signals.relatedAccounts ?? 0) > 1) reasons.push("cross_account");
+  return { blocked: reasons.length > 0, reasons };
+}
+
 // ---------------------------------------------------------------------------
 // Repeated failed trades (issue #491)
 // ---------------------------------------------------------------------------
