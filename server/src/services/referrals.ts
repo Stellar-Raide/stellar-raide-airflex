@@ -6,6 +6,12 @@ import { WalletService } from './wallet';
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const DEFAULT_REWARD = 50;
 
+export function validateReferralApplication(referrerId: string, referredId: string, expiresAt?: Date | null): void {
+  if (!referrerId || !referredId) throw new Error('A referral code is required');
+  if (referrerId === referredId) throw new Error('You cannot refer yourself');
+  if (expiresAt && expiresAt.getTime() <= Date.now()) throw new Error('This referral code has expired');
+}
+
 /** Bytes of entropy per code: 10 bytes = 80 bits, which base32-encodes to exactly 16 characters. */
 export const REFERRAL_CODE_BYTES = 10;
 export const REFERRAL_CODE_LENGTH = (REFERRAL_CODE_BYTES * 8) / 5;
