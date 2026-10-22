@@ -104,7 +104,7 @@ async function dispatchSms(
 
   // Throws MissingTemplateVariableError on an incomplete payload, which
   // sendToTarget logs and swallows — better no SMS than a malformed one.
-  const text = renderTemplate(NOTIFICATION_TEMPLATES[event], payload);
+  const renderedText = renderTemplate(NOTIFICATION_TEMPLATES[event], payload);
 
   const res = await fetch(TERMII_SMS_URL, {
     method: "POST",
@@ -113,7 +113,7 @@ async function dispatchSms(
       api_key: apiKey,
       to: target.phone,
       from: "AirFlex",
-      sms: text,
+      sms: renderedText,
       type: "plain",
       channel: "generic",
     }),
