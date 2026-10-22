@@ -20,10 +20,11 @@ Please read this guide before opening issues or pull requests.
 8. [Pull Request Process](#pull-request-process)
 9. [Coding Standards](#coding-standards)
 10. [Smart Contract Guidelines](#smart-contract-guidelines)
-11. [API Versioning Policy](#api-versioning-policy)
-12. [Reporting Bugs](#reporting-bugs)
-13. [Suggesting Features](#suggesting-features)
-14. [Security Vulnerabilities](#security-vulnerabilities)
+11. [Local Contract Builds](#local-contract-builds)
+12. [API Versioning Policy](#api-versioning-policy)
+13. [Reporting Bugs](#reporting-bugs)
+14. [Suggesting Features](#suggesting-features)
+15. [Security Vulnerabilities](#security-vulnerabilities)
 
 ---
 
@@ -47,30 +48,7 @@ tolerated. When in doubt, default to kindness.
 
 ## Project Structure
 
-```
-stellar-raide-stellar-raide-airflex/
-├── apps/
-│   └── docs-site/       # Public docs site (Next.js + Nextra) — docs.stellar-raide-stellar-raide-airflex.io
-├── contracts/          # Soroban smart contracts (Rust)
-│   └── escrow/         # Escrow contract
-├── docs/               # Project documentation
-├── frontend/
-│   └── app/            # Next.js application (TypeScript + Tailwind CSS)
-├── server/
-│   └── src/
-│       ├── middleware/  # Express middleware (auth, etc.)
-│       ├── routes/      # API route handlers
-│       ├── services/    # External integrations (Stellar SDK, Paystack, etc.)
-│       ├── types/       # Shared TypeScript types
-│       ├── db.ts        # PostgreSQL connection pool
-│       └── index.ts     # Server entry point
-├── .gitignore
-├── CONTRIBUTING.md      # This file
-├── LICENSE
-└── README.md
-```
 
----
 
 ## Development Setup
 
@@ -323,6 +301,95 @@ without redeployment.
 
 ---
 
+## Local Contract Builds
+
+The Soroban contracts live in [`contracts/`](./contracts) as a Cargo workspace
+(`escrow` and `marketplace`). This section covers everything needed to build,
+test and deploy them from your own machine.
+
+### Prerequisites
+
+| Tool | Version | Why | Install |
+|------|---------|-----|---------|
+| Rust (via rustup) | 1.80+ | Compiles the contracts | https://rustup.rs |
+| `wasm32v1-none` target | — | WASM target required by stellar-cli v22+ | `rustup target add wasm32v1-none` |
+| Stellar CLI (Soroban CLI) | 22+ | Builds, deploys and invokes contracts | `cargo install --locked stellar-cli` |
+| Docker | 24+ | Optional — runs a local Stellar network (`stellar container start`) | https://docs.docker.com/get-docker/ |
+| GNU Make | any | Runs the `contracts/Makefile` targets | Bundled on macOS/Linux |
+
+Verify the toolchain:
+
+```bash
+rustc --version
+cargo --version
+stellar --version
+docker --version
+```
+
+Official setup documentation:
+
+- Soroban environment setup — https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup
+- Stellar CLI reference — https://developers.stellar.org/docs/tools/cli/stellar-cli
+- Local network with Docker (Stellar Quickstart) — https://developers.stellar.org/docs/tools/quickstart
+
+### Build the contracts
+
+```bash
+cd contracts
+make build                 # cargo build --release --workspace (native build)
+stellar contract build     # optimised .wasm in target/wasm32v1-none/release/
+```
+
+### Run the contract unit tests
+
+```bash
+cd contracts
+make test                  # cargo test --workspace --all-features on the host target
+```
+
+Run a single crate or test while iterating:
+
+```bash
+cargo test -p escrow
+cargo test -p marketplace <test_name>
+```
+
+`make clean` removes build artefacts.
+
+### Deploy to Testnet from your machine
+
+The full walkthrough is in
+[`docs/SOROBAN_DEPLOY_GUIDE.md`](./docs/SOROBAN_DEPLOY_GUIDE.md). The short
+version:
+
+1. **Build the WASM:**
+   ```bash
+   cd contracts && stellar contract build
+   ```
+2. **Create a deployer identity** (stored locally by the CLI):
+   ```bash
+   stellar keys generate deployer --network testnet
+   ```
+3. **Fund it from Friendbot:**
+   ```bash
+   stellar keys fund deployer --network testnet
+   ```
+4. **Deploy and initialise** with the repository script, which writes the new
+   contract IDs to `contracts/deployments.json`:
+   ```bash
+   SOROBAN_DEPLOYER_SECRET=$(stellar keys show deployer) \
+   SOROBAN_ADMIN_ADDRESS=$(stellar keys address deployer) \
+     ./contracts/deploy.sh --network testnet --commit no
+   ```
+5. **Point the server at your deployment** by copying the printed contract
+   addresses into `server/.env` (see `server/.env.example`).
+
+Never deploy to mainnet from a local machine, and never commit a secret key.
+Use `--commit no` locally so `deployments.json` only changes through CI
+(`.github/workflows/soroban-deploy.yml`).
+
+---
+
 ## API Versioning Policy
 
 All API routes are prefixed with a version identifier: `/api/v1/`.
@@ -381,9 +448,9 @@ Open a [GitHub Issue](https://github.com/dark-sarge/stellar-raide-stellar-raide-
 
 **Do not open a public issue for security vulnerabilities.**
 
-Report them privately by emailing the maintainers or using GitHub's private security
-advisory feature. Include a description of the issue, reproduction steps, and potential
-impact. A fix will be prepared and coordinated before any public disclosure.
+Report them privately to security@stellar-raide-stellar-raide-airflex.io or through a
+[GitHub Security Advisory](https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/security/advisories/new).
+Response times and the disclosure timeline are defined in [`SECURITY.md`](./SECURITY.md).
 
 ---
 

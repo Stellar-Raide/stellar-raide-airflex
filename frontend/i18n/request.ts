@@ -20,5 +20,9 @@ export default getRequestConfig(async ({ requestLocale }) => {
   return {
     locale,
     messages: (await import(`../locales/${locale}/common.json`)).default,
+    // Dates (e.g. a listing's expiry) are shown in Nigerian time on both the
+    // server and the client. Without an explicit zone next-intl falls back
+    // to the runtime's and logs an ENVIRONMENT_FALLBACK warning.
+    timeZone: "Africa/Lagos",
   };
 });

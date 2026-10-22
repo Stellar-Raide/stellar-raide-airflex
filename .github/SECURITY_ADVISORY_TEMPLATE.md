@@ -12,6 +12,13 @@ labels: ["security"]
 
   For urgent matters or if you prefer email, contact: security@stellar-raide-stellar-raide-airflex.io
   Full policy: https://github.com/Stellar-Raide/stellar-raide-stellar-raide-stellar-raide-airflex/blob/main/SECURITY.md
+
+  What to expect after submitting (see SECURITY.md → Response SLAs):
+    - Acknowledgement within 48 hours
+    - Triage and severity classification within 5 business days
+    - Progress updates at least every 7 days
+    - Resolution within: Critical 7 days · High 30 days · Medium 60 days · Low 90 days
+      (measured from the end of triage)
 -->
 
 ## Affected Component
@@ -69,10 +76,15 @@ labels: ["security"]
 
 ## Severity (your estimate)
 
-- [ ] Critical — direct loss of user funds or mass account takeover
-- [ ] High     — authenticated access to another user's data
-- [ ] Medium   — security control bypass without immediate fund loss
-- [ ] Low      — minor information disclosure or defence-in-depth gap
+<!--
+  Maintainers confirm the final severity during triage (within 5 business days).
+  The confirmed severity sets the resolution SLA.
+-->
+
+- [ ] Critical (CVSS 9.0–10.0) — direct loss of user funds or mass account takeover · resolution SLA 7 days
+- [ ] High     (CVSS 7.0–8.9)  — authenticated access to another user's data · resolution SLA 30 days
+- [ ] Medium   (CVSS 4.0–6.9)  — security control bypass without immediate fund loss · resolution SLA 60 days
+- [ ] Low      (CVSS 0.1–3.9)  — minor information disclosure or defence-in-depth gap · resolution SLA 90 days
 
 ---
 
@@ -111,6 +123,14 @@ labels: ["security"]
 
 ## Disclosure Preferences
 
+<!--
+  Coordinated disclosure (SECURITY.md → Coordinated Disclosure): public
+  disclosure is permitted once the advisory is published (fix + 7 days), or
+  90 days after this report, whichever comes first — unless an extension is
+  agreed in writing.
+-->
+
+- [ ] I agree to the coordinated disclosure timeline in SECURITY.md
 - [ ] I consent to being credited in the published security advisory
 - [ ] I would like to co-ordinate on a public write-up after the fix is deployed
 - [ ] I prefer to remain anonymous

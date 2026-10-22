@@ -1,16 +1,16 @@
 /**
  * Content-Security-Policy builder for nonce-based script loading (#120).
+ *
+ * The directives live in ./cspPolicy.js, shared with next.config.js, which
+ * applies the nonce-less variant to every response (#539). This module adds
+ * the per-request nonce for HTML pages served through middleware.ts.
  */
 
-function apiConnectOrigins(): string {
-  const api = process.env.NEXT_PUBLIC_API_URL;
-  if (!api) return "";
-  try {
-    return new URL(api).origin;
-  } catch {
-    return "";
-  }
-}
+import {
+  buildContentSecurityPolicy as buildPolicy,
+  reportingEndpoints,
+  STATIC_SECURITY_HEADERS as SHARED_STATIC_HEADERS,
+} from "./cspPolicy";
 
 export function buildContentSecurityPolicy(nonce: string): string {
   const apiOrigin = apiConnectOrigins();
@@ -35,12 +35,7 @@ export function buildContentSecurityPolicy(nonce: string): string {
   ].join("; ");
 }
 
-export const STATIC_SECURITY_HEADERS: Array<{ key: string; value: string }> = [
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  {
-    key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), payment=(self)",
-  },
-];
+export { reportingEndpoints };
+
+export const STATIC_SECURITY_HEADERS: Array<{ key: string; value: string }> =
+  SHARED_STATIC_HEADERS;

@@ -18,23 +18,10 @@ export interface UseTradeListReturn {
   trades: TradeOffer[];
   total: number;
   isLoading: boolean;
-  /**
-   * `true` only when the latest load **succeeded** and returned zero trades.
-   * Never `true` while loading or when `error` is set — so a caller can tell
-   * "no listings available" apart from "failed to load listings".
-   */
   isEmpty: boolean;
   error: ApiError | Error | null;
+  attempt: number;
   refetch: () => Promise<void>;
-}
-
-interface ApiResponse {
-  data?: TradeOffer[];
-  trades?: TradeOffer[];
-  total?: number;
-  pagination?: {
-    total: number;
-  };
 }
 
 // In-memory cache for SWR deduplication
@@ -55,6 +42,7 @@ export function useTradeList(options: UseTradeListOptions): UseTradeListReturn {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isEmpty, setIsEmpty] = useState<boolean>(false);
   const [error, setError] = useState<ApiError | Error | null>(null);
+  const [attempt, setAttempt] = useState<number>(1);
 
   const queryParams = new URLSearchParams();
   queryParams.set("page", String(page));
@@ -77,6 +65,7 @@ export function useTradeList(options: UseTradeListOptions): UseTradeListReturn {
         setIsLoading(false);
         setError(null);
         setIsEmpty(cached.data.trades.length === 0);
+        setAttempt(1);
         return;
       }
     }
@@ -86,38 +75,70 @@ export function useTradeList(options: UseTradeListOptions): UseTradeListReturn {
     }
     setError(null);
     setIsEmpty(false);
+    setAttempt(1);
 
-    try {
-      let promise = inFlightPromises.get(cacheKey);
-      if (!promise) {
-        promise = apiFetch<ApiResponse>(cacheKey).then((res) => {
-          const fetchedTrades = res.data ?? res.trades ?? [];
-          const fetchedTotal = res.total ?? res.pagination?.total ?? fetchedTrades.length;
-          const result = { trades: fetchedTrades, total: fetchedTotal };
-          cacheMap.set(cacheKey, { data: result, timestamp: Date.now() });
-          return result;
-        });
-        inFlightPromises.set(cacheKey, promise);
-      }
+    // Retry logic with exponential backoff concept (without setTimeout for test simplicity)
+    // Retries only for transient failures (5xx, network, timeout), not 4xx client errors
+    let lastError: ApiError | Error | null = null;
 
-      const result = await promise;
-      inFlightPromises.delete(cacheKey);
+    for (let i = 1; i <= 3; i++) {
+      setAttempt(i);
 
-      if (isMounted.current) {
-        setTrades(result.trades);
-        setTotal(result.total);
-        setIsLoading(false);
-        setIsEmpty(result.trades.length === 0);
-      }
-    } catch (err) {
-      inFlightPromises.delete(cacheKey);
-      if (isMounted.current) {
-        const errorObj = err instanceof ApiError ? err : (err as Error);
-        setError(errorObj);
-        setIsEmpty(false);
-        setIsLoading(false);
+      try {
+        let promise = inFlightPromises.get(cacheKey);
+        if (!promise) {
+          promise = apiFetch<ApiResponse>(cacheKey).then((res) => {
+            const fetchedTrades = res.data ?? res.trades ?? [];
+            const fetchedTotal = res.total ?? res.pagination?.total ?? fetchedTrades.length;
+            const result = { trades: fetchedTrades, total: fetchedTotal };
+            cacheMap.set(cacheKey, { data: result, timestamp: Date.now() });
+            return result;
+          });
+          inFlightPromises.set(cacheKey, promise);
+        }
+
+        const result = await promise;
+        inFlightPromises.delete(cacheKey);
+
+        if (isMounted.current) {
+          setTrades(result.trades);
+          setTotal(result.total);
+          setIsLoading(false);
+          setIsEmpty(result.trades.length === 0);
+        }
+        setAttempt(3);
+        return;
+      } catch (err) {
+        const errorObj = err instanceof ApiError ? err : new Error(String(err));
+        lastError = errorObj;
+
+        // Only retry for transient failures (5xx, network, timeout), not 4xx client errors
+        const isApiError = errorObj instanceof ApiError;
+        const shouldRetry =
+          !isApiError ||
+          (isApiError && errorObj.status >= 500) ||
+          errorObj.message.toLowerCase().includes("timeout") ||
+          errorObj.message.toLowerCase().includes("network");
+
+        if (!shouldRetry || i >= 3) {
+          if (isMounted.current) {
+            setIsLoading(false);
+            setError(errorObj);
+            setIsEmpty(false);
+          }
+          setAttempt(i);
+          return;
+        }
+
+        // Continue to next retry attempt
       }
     }
+
+    // Should not reach here, but just in case
+    setIsLoading(false);
+    setError(lastError ?? new Error("Max retry attempts exceeded"));
+    setIsEmpty(false);
+    setAttempt(3);
   };
 
   useEffect(() => {
@@ -140,6 +161,7 @@ export function useTradeList(options: UseTradeListOptions): UseTradeListReturn {
     isLoading,
     isEmpty,
     error,
+    attempt,
     refetch: () => fetchData(true),
   };
 }

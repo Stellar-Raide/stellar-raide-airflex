@@ -31,7 +31,15 @@ export {
 
 export {
   resolveDisputeSchema,
+  reviewFraudFlagSchema,
+  auditLogQuerySchema,
+  AUDIT_ACTIONS,
+  AUDIT_TARGET_TYPES,
   type ResolveDisputeInput,
+  type ReviewFraudFlagInput,
+  type AuditLogQueryInput,
+  type AuditAction,
+  type AuditTargetType,
 } from "./admin.schemas";
 
 export {
@@ -45,3 +53,9 @@ export {
   userRatingsPaginationSchema,
   type CreateRatingInput,
 } from "./ratings.schemas";
+
+export {
+  profileUpdateSchema,
+  updateProfileSchema,
+  type ProfileUpdateInput,
+} from "./profile.schemas";

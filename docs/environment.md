@@ -30,7 +30,11 @@ The server **will not start** if any of these are missing:
 |----------|---------|-------------|
 | `PORT` | `3001` | Port the Express server listens on (integer between 1024 and 65535). |
 | `NODE_ENV` | `development` | Set to `production` in deployed environments. Affects morgan logging format and stack traces. |
-| `CORS_ORIGIN` | `*` | Allowed CORS origin(s). Set to your exact frontend domain in production (e.g. `https://stellar-raide-stellar-raide-airflex.app`). |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` (dev) / none (prod) | Comma-separated allowlist of exact browser origins, e.g. `https://stellar-raide-stellar-raide-airflex.app,https://www.stellar-raide-stellar-raide-airflex.app`. `*` makes the server refuse to start in production; unset in production rejects all cross-origin browser requests. |
+| `CORS_ORIGIN` | — | Deprecated single-origin alias, read only when `CORS_ALLOWED_ORIGINS` is unset. |
+| `PUBLIC_API_URL` | request host | Public base URL used for GDPR export status/download links. |
+| `DATA_EXPORT_RETENTION_HOURS` | `168` | How long a generated GDPR export is kept before cleanup. |
+| `DATA_EXPORT_LINK_TTL_SECONDS` | `900` | Lifetime of a signed export download URL. |
 | `PLATFORM_FEE_PERCENT` | `1.5` | Percentage fee deducted from each completed trade settlement. |
 | `REFERRAL_REWARD_NGN` | `100` | Referral reward amount credited in NGN to buyer and seller upon trade completion. |
 
@@ -67,6 +71,7 @@ SOROBAN_RPC_URL=https://mainnet.stellar.validationcloud.io/v1/<API_KEY>
 | `PAYSTACK_SECRET_KEY` | `sk_test_xxx` | Paystack secret API key. |
 | `PAYSTACK_PREFERRED_BANK` | `wema-bank` | Preferred bank slug for dedicated virtual accounts (`wema-bank`, `access-bank`, `gtbank`). |
 | `TERMII_API_KEY` | `TLxxx` | Termii API key for OTP delivery via SMS. |
+| `APP_BASE_URL` | `https://stellar-raide-stellar-raide-airflex.app` | Public frontend URL used for deep links in notifications (e.g. the dispute link in `trade_dispute_opened`). When unset, messages say "open the AirFlex app" instead of a link. |
 
 ### Fraud Detection & Velocity Limits
 
@@ -75,6 +80,8 @@ SOROBAN_RPC_URL=https://mainnet.stellar.validationcloud.io/v1/<API_KEY>
 | `MAX_TRADES_PER_HOUR` | `10` | Maximum number of trade offers a single user can create per hour. |
 | `MAX_DEPOSITS_PER_DAY` | `5` | Maximum number of fiat deposits a user can initiate per day. |
 | `MAX_WITHDRAWALS_PER_DAY` | `3` | Maximum number of fiat withdrawals a user can initiate per day. |
+| `FAILED_TRADE_THRESHOLD` | `5` | Consecutive failed trade attempts within the window that flag an account for admin review (`REPEATED_FAILED_TRADES`). A successful trade resets the count. |
+| `FAILED_TRADE_WINDOW_SECONDS` | `3600` | Rolling window for `FAILED_TRADE_THRESHOLD`. Failures older than this are forgotten. |
 
 ### Trade Verification Retries
 
@@ -101,7 +108,7 @@ See [`server/.env.example`](file:///server/.env.example) for a complete template
 # Server
 PORT=3001
 NODE_ENV=development
-CORS_ORIGIN=http://localhost:3000
+CORS_ALLOWED_ORIGINS=http://localhost:3000
 
 # Database & Redis
 DATABASE_URL=postgresql://postgres:password@localhost:5432/stellar-raide-stellar-raide-airflex
@@ -132,4 +139,5 @@ PLATFORM_TREASURY_USER_ID=00000000-0000-0000-0000-000000000000
 - `JWT_SECRET` rotation invalidates all active sessions — plan for re-login.
 - `ENCRYPTION_KEY` must be securely generated and stored in a secrets manager.
 - `STELLAR_SERVER_SECRET` must NEVER be exposed or logged.
-- Set `CORS_ORIGIN` to your exact frontend domain in production — never leave it as `*` in a live environment.
+- Set `CORS_ALLOWED_ORIGINS` to your exact frontend origin(s) in production. A wildcard `*` is rejected at startup when `NODE_ENV=production`.
+- Frontend CSP (`frontend/lib/cspPolicy.js`) reads `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_STELLAR_NETWORK`, and optionally `NEXT_PUBLIC_HORIZON_URL`, `NEXT_PUBLIC_SOROBAN_RPC_URL`, `NEXT_PUBLIC_CSP_SCRIPT_HASHES` (comma-separated `sha256-...` hashes) and `NEXT_PUBLIC_CSP_REPORT_URI` (default `/api/csp-report`) at build time.

@@ -3,7 +3,6 @@ import "express-async-errors";
 // Load contract IDs early — emits startup warnings if addresses are missing
 import "./config/contracts";
 import express, { Request, Response } from "express";
-import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import { registerRoutes } from "./routes";
@@ -16,6 +15,7 @@ import { pool, query } from "./db/pool";
 import { cache } from "./services/cache";
 
 import { assertEnvValid } from "./config/validateEnv";
+import { corsMiddleware } from "./config/cors";
 
 const isTest =
   process.env["NODE_ENV"] === "test" ||
@@ -92,15 +92,10 @@ app.use(requestId);
 // Security headers
 app.use(helmet());
 
-// CORS — tighten origins in production via CORS_ORIGIN env var
-app.use(
-  cors({
-    origin: process.env["CORS_ORIGIN"] ?? "*",
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    exposedHeaders: ["X-Api-Version"],
-  })
-);
+// CORS — explicit origin allowlist from CORS_ALLOWED_ORIGINS; wildcard is
+// rejected in production (see config/cors.ts). Preflights are terminated in
+// routes/index.ts.
+app.use(corsMiddleware());
 
 // Request logging with X-Request-Id token
 // Define custom token to include request ID in logs

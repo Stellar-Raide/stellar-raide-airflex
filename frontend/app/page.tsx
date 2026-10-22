@@ -1,6 +1,57 @@
+import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import ThemeToggle from "../components/ThemeToggle";
 import ListingsGrid from "./components/ListingsGrid";
+import { SITE_NAME, siteUrl } from "./lib/seo";
+
+/**
+ * Page-specific metadata for the landing page (issue #464).
+ *
+ * The root layout (`app/layout.tsx`) defines the site-wide defaults — title
+ * template, default description, metadataBase and the shared OpenGraph image.
+ * This export *overrides* those defaults with landing-page-specific values so
+ * link previews and search results for "/" describe the marketplace itself
+ * rather than the generic site title.
+ *
+ * `getTranslations` resolves the active locale server-side, so the metadata is
+ * localised per request (English / Yoruba / Igbo / Hausa).
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("Home");
+
+  const title = `${t("title1")} ${t("title2")}`;
+  const description = t("description");
+  const fullTitle = `${title} | ${SITE_NAME}`;
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: `${siteUrl()}/`,
+    },
+    openGraph: {
+      type: "website",
+      url: `${siteUrl()}/`,
+      title: fullTitle,
+      description,
+      siteName: SITE_NAME,
+      images: [
+        {
+          url: "/og-default.png",
+          width: 1200,
+          height: 630,
+          alt: `${title} — ${SITE_NAME}`,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: fullTitle,
+      description,
+      images: ["/og-default.png"],
+    },
+  };
+}
 
 export default async function HomePage() {
   const t = await getTranslations("Home");

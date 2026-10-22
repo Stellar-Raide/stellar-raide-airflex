@@ -48,6 +48,7 @@ export const JOB_QUEUES = [
   "process-paystack-webhook",
   "refund-cancelled-trade",
   "process-withdrawal",       // issue #246: async Paystack transfer initiation
+  "generate-data-export",     // issue #539: GDPR data portability export
 ] as const;
 
 export type QueueName = (typeof JOB_QUEUES)[number];

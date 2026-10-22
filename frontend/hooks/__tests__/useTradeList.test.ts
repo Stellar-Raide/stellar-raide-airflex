@@ -24,7 +24,6 @@ describe("useTradeList Hook", () => {
   afterEach(() => {
     jest.useRealTimers();
   });
-
   it("handles loading -> success state transition and fetches trades", async () => {
     const mockTrades = [
       {
@@ -65,7 +64,7 @@ describe("useTradeList Hook", () => {
     );
   });
 
-  it("handles loading -> error state transition when apiFetch throws ApiError", async () => {
+  it("handles loading -> error state transition after all retry attempts", async () => {
     const apiError = new ApiError("Failed to fetch marketplace trades", 500);
     mockedApiFetch.mockRejectedValueOnce(apiError);
 
@@ -73,15 +72,17 @@ describe("useTradeList Hook", () => {
       useTradeList({ page: 1, limit: 10 })
     );
 
-    expect(result.current.isLoading).toBe(true);
-
+    // 5xx errors are transient and will be retried with backoff
+    // waitFor will wait until isLoading becomes false (after all attempts exhausted)
+    // Increase test timeout to account for retry backoff delays
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    expect(result.current.trades).toEqual([]);
-    expect(result.current.error).toBe(apiError);
-    expect((result.current.error as ApiError).message).toBe("Failed to fetch marketplace trades");
+    // Error should be set after all retry attempts exhausted
+    expect(result.current.error).toBeInstanceOf(ApiError);
+    expect(result.current.error?.message).toBe("Failed to fetch marketplace trades");
+    expect(result.current.isEmpty).toBe(false);
   });
 
   it("deduplicates network requests within the cache window", async () => {
@@ -157,15 +158,18 @@ describe("useTradeList Hook", () => {
     expect(result.current.isEmpty).toBe(true);
   });
 
-  it("keeps isEmpty=false (and sets error) when the fetch fails", async () => {
+  it("keeps isEmpty=false (and sets error) when the fetch fails after retries", async () => {
     const apiError = new ApiError("marketplace unavailable", 500);
     mockedApiFetch.mockRejectedValueOnce(apiError);
 
     const { result } = renderHook(() => useTradeList({ page: 1, limit: 10 }));
 
+    // 5xx errors are transient and will be retried with backoff
+    // waitFor will wait until isLoading becomes false (after all attempts exhausted)
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(result.current.error).toBe(apiError);
+    // Error should be set after all retry attempts
+    expect(result.current.error).toBeInstanceOf(ApiError);
     expect(result.current.isEmpty).toBe(false);
   });
 

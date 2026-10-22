@@ -16,6 +16,14 @@ transparent, low-cost, escrow-backed telecom value exchange.
 
 ---
 
+## Project Overview
+
+- 🗺️ **[Roadmap](./ROADMAP.md)** — milestones, the Q4 2026 marketplace plan, and shipped work with merge dates
+- 🔐 **[Security Policy](./SECURITY.md)** — how to report a vulnerability and our response SLAs
+- 🤝 **[Contributing Guide](./CONTRIBUTING.md)** — local setup, including building and testing the Soroban contracts
+
+---
+
 ## Why AirFlex?
 
 Millions of users accidentally over-purchase airtime or data but have no safe way to recover

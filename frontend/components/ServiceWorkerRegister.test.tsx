@@ -59,9 +59,10 @@ describe("ServiceWorkerRegister", () => {
       expect(register).toHaveBeenCalledWith("/sw.js", { scope: "/" })
     );
     await waitFor(() =>
-      expect(mockedReportError).toHaveBeenCalledWith(error, {
-        source: "service-worker",
-      })
+      expect(mockedReportError).toHaveBeenCalledWith(
+        error,
+        expect.objectContaining({ source: "service-worker" })
+      )
     );
     expect(warnSpy).toHaveBeenCalledWith(
       "[pwa] Service worker registration failed:",

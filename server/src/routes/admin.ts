@@ -11,6 +11,12 @@
  *   POST /api/v1/admin/trades/:id/resolve— settle a disputed trade (RELEASE | REFUND)
  *   GET  /api/v1/admin/users             — paginated users with balance + trade count
  *   GET  /api/v1/admin/users/:phone      — single user profile + wallet + trade history
+ *   GET  /api/v1/admin/fraud-flags       — accounts flagged by fraud rules (status filter + pagination)
+ *   PATCH /api/v1/admin/fraud-flags/:id  — close a flag as reviewed or dismissed
+ *   GET  /api/v1/admin/audit-logs        — immutable admin action trail (super_admin only)
+ *
+ * Every state-changing route records an entry in `audit_logs` (actor, action,
+ * target, before/after state, request context) via services/auditLog.ts.
  */
 
 import { Router } from "express";
@@ -25,11 +31,22 @@ import pool from "../db";
 import { resolveDispute } from "../services/stellar";
 import {
   resolveDisputeSchema,
+  reviewFraudFlagSchema,
   paginationSchema,
+  auditLogQuerySchema,
   type ResolveDisputeInput,
+  type ReviewFraudFlagInput,
 } from "../schemas";
 import type { TradeOffer } from "../types/trade";
-import { FraudDetectionService } from "../services/fraudDetection";
+import { FraudDetectionService, type FraudFlagStatus } from "../services/fraudDetection";
+import type { AuthenticatedRequest } from "../middleware/authenticate";
+import {
+  auditActor,
+  auditContext,
+  listAuditLogs,
+  recordAuditLog,
+  recordAuditLogAfterCommit,
+} from "../services/auditLog";
 
 const router = Router();
 
@@ -259,6 +276,21 @@ router.post(
         [newStatus, id]
       );
 
+      // Same transaction as the status change: the audit row and the
+      // resolution commit or roll back together.
+      await recordAuditLog(
+        {
+          ...auditActor(req),
+          action: "trade.dispute_resolved",
+          targetType: "trade",
+          targetId: id!,
+          before: { status: trade.status },
+          after: { status: newStatus, resolution, txHash },
+          metadata: auditContext(req),
+        },
+        client
+      );
+
       await client.query("COMMIT");
 
       const participants = [trade.seller_id];
@@ -470,6 +502,111 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
+// Fraud flag review queue (issue #491)
+// ---------------------------------------------------------------------------
+
+const FRAUD_FLAG_STATUSES: readonly FraudFlagStatus[] = ["open", "reviewed", "dismissed"];
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * GET /api/v1/admin/fraud-flags?status=open&page=1&limit=20
+ *
+ * Accounts flagged by fraud rules (e.g. REPEATED_FAILED_TRADES), newest
+ * first. `status` is optional; omit it to list every flag.
+ */
+router.get(
+  "/fraud-flags",
+  authenticate,
+  authorize("admin"),
+  async (req, res) => {
+    const parsed = paginationSchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: "Invalid query parameters",
+        details: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const rawStatus = typeof req.query.status === "string" ? req.query.status : undefined;
+    if (rawStatus !== undefined && !FRAUD_FLAG_STATUSES.includes(rawStatus as FraudFlagStatus)) {
+      res.status(400).json({
+        error: `Invalid status. Allowed: ${FRAUD_FLAG_STATUSES.join(", ")}`,
+      });
+      return;
+    }
+
+    const { page, limit } = parsed.data;
+    const { flags, total } = await FraudDetectionService.listFraudFlags({
+      status: rawStatus as FraudFlagStatus | undefined,
+      limit,
+      offset: (page - 1) * limit,
+    });
+
+    res.status(200).json({
+      data: flags,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
+  }
+);
+
+/**
+ * PATCH /api/v1/admin/fraud-flags/:id   body: { status: "reviewed" | "dismissed", note? }
+ *
+ * Closes an open flag and records the reviewing admin, timestamp and note.
+ * 404 if the flag doesn't exist, 409 if it was already closed.
+ */
+router.patch(
+  "/fraud-flags/:id",
+  authenticate,
+  authorize("admin"),
+  validate(reviewFraudFlagSchema),
+  async (req, res) => {
+    const { id } = req.params;
+    if (!id || !UUID_PATTERN.test(id)) {
+      res.status(400).json({ error: "Invalid fraud flag id" });
+      return;
+    }
+
+    const { status, note } = req.body as ReviewFraudFlagInput;
+    const reviewerId = (req as unknown as AuthenticatedRequest).user.sub;
+
+    const flag = await FraudDetectionService.reviewFraudFlag(id, reviewerId, status, note || null);
+    if (flag) {
+      // reviewFraudFlag only updates rows that were 'open', so that is the
+      // prior state by construction.
+      await recordAuditLogAfterCommit({
+        ...auditActor(req),
+        action: "fraud_flag.reviewed",
+        targetType: "fraud_flag",
+        targetId: id,
+        before: { status: "open" },
+        after: {
+          status: flag.status,
+          reviewed_by: flag.reviewed_by,
+          reviewed_at: flag.reviewed_at,
+          review_note: flag.review_note,
+        },
+        metadata: auditContext(req),
+      });
+      res.status(200).json({ data: flag });
+      return;
+    }
+
+    const { rows } = await pool.query<{ status: FraudFlagStatus }>(
+      `SELECT status FROM fraud_flags WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+    if (!rows.length) {
+      res.status(404).json({ error: "Fraud flag not found" });
+      return;
+    }
+    res.status(409).json({ error: `Fraud flag is already ${rows[0]!.status}` });
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Webhook dead-letter inspection (#118)
 // ---------------------------------------------------------------------------
 
@@ -516,10 +653,79 @@ router.post(
       [id]
     );
 
+    await recordAuditLogAfterCommit({
+      ...auditActor(req),
+      action: "webhook.replayed",
+      targetType: "webhook_event",
+      targetId: id!,
+      before: { status: "failed" },
+      after: { status: "pending" },
+      metadata: auditContext(req),
+    });
+
     await QueueService.enqueue("process-paystack-webhook", { webhookEventId: id });
 
     res.status(202).json({ message: "Webhook re-enqueued for processing" });
   }
 );
+
+// ---------------------------------------------------------------------------
+// Audit logs (issue #539) — super_admin only, read-only
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/v1/admin/audit-logs
+ *   ?actorId=&action=&targetType=&targetId=&from=&to=&page=1&limit=20
+ *
+ * Immutable trail of state-changing admin actions, newest first. Restricted
+ * to super_admin: regular admins are the subjects of this log and must not
+ * be able to read (or infer) what is recorded about them.
+ */
+router.get(
+  "/audit-logs",
+  authenticate,
+  authorize("super_admin"),
+  async (req, res) => {
+    const parsed = auditLogQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: "Invalid query parameters",
+        details: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { page, limit, actorId, action, targetType, targetId, from, to } = parsed.data;
+    const { entries, total } = await listAuditLogs({
+      actorId,
+      action,
+      targetType,
+      targetId,
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
+      limit,
+      offset: (page - 1) * limit,
+    });
+
+    res.status(200).json({
+      data: entries,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
+  }
+);
+
+/**
+ * Audit entries are append-only. Answer any attempt to create, edit or delete
+ * one through the API with 405 instead of a generic 404, so the intent is
+ * explicit (the database trigger in migration 013 enforces the same rule).
+ */
+router.all(["/audit-logs", "/audit-logs/:id"], (req, res, next) => {
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") {
+    next();
+    return;
+  }
+  res.setHeader("Allow", "GET");
+  res.status(405).json({ error: "Audit logs are immutable" });
+});
 
 export default router;

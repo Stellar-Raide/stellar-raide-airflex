@@ -71,8 +71,9 @@ export function middleware(request: NextRequest) {
   const nonceBytes = new Uint8Array(16);
   crypto.getRandomValues(nonceBytes);
   const nonce = btoa(String.fromCharCode(...nonceBytes));
+  const csp = buildContentSecurityPolicy(nonce);
   const secureHeaders = (response: NextResponse) => {
-    response.headers.set("Content-Security-Policy", buildContentSecurityPolicy(nonce));
+    response.headers.set("Content-Security-Policy", csp);
     for (const header of STATIC_SECURITY_HEADERS) {
       response.headers.set(header.key, header.value);
     }
@@ -108,6 +109,14 @@ export function middleware(request: NextRequest) {
       return secureHeaders(NextResponse.redirect(new URL("/", request.url)));
     }
   }
+
+  // Next.js reads the nonce from the *request* CSP header when rendering and
+  // stamps it on its own inline bootstrap scripts; without this the enforced
+  // policy would block hydration. next-intl copies request.headers into the
+  // request it forwards (NextResponse.next/rewrite({ request: { headers } })),
+  // so setting them here is enough. x-nonce is for any app code that needs it.
+  request.headers.set("Content-Security-Policy", csp);
+  request.headers.set("x-nonce", nonce);
 
   // Handle locale detection, prefixing, redirects, and cookie sync.
   const response = intlMiddleware(request);

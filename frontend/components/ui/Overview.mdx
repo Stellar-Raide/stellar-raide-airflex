@@ -1,0 +1,118 @@
+import { Meta } from "@storybook/blocks";
+
+<Meta title="UI/Overview" />
+
+# stellar-raide-stellar-raide-stellar-raide-airflex UI Component Library
+
+Welcome to the stellar-raide-stellar-raide-stellar-raide-airflex UI component library catalog. All shared primitives located under `frontend/components/ui/` are built with accessible HTML semantics, comprehensive dark mode styling, and responsive layout foundations.
+
+---
+
+## Component Index & Props Reference
+
+### 1. Badge (`Badge.tsx`)
+A status badge representing trade lifecycle states or system statuses with accessible contrast and optional status dot indicator.
+
+| Prop | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `variant` | `"Open"` \| `"Active"` \| `"Locked"` \| `"Completed"` \| `"Cancelled"` \| `"Disputed"` | `"Open"` | Trade status variant determining background and text tones. |
+| `showDot` | `boolean` | `true` | Toggles the colored status dot indicator. |
+| `children` | `React.ReactNode` | Status name | Custom text or content within badge. |
+| `className`| `string` | `""` | Additional CSS class overrides. |
+
+---
+
+### 2. Button (`Button.tsx`)
+Polymorphic or standard button supporting visual variants, sizes, loading spinners, and disabled states.
+
+| Prop | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `variant` | `"primary"` \| `"secondary"` \| `"danger"` \| `"ghost"` | `"primary"` | Visual tone and emphasis of the button. |
+| `size` | `"sm"` \| `"md"` \| `"lg"` | `"md"` | Button padding and typography scale. |
+| `isLoading` | `boolean` | `false` | Shows spinner and accessible loading indicator while disabling interaction. |
+| `loadingText` | `string` | `"Loading..."` | Screen-reader label and visual text during loading. |
+| `disabled` | `boolean` | `false` | Disables button events and dims visuals. |
+
+---
+
+### 3. Card (`Card.tsx`)
+Surface container with subtle borders, elevation shadows, and optional hover interactivity.
+
+| Prop | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `as` | `"div"` \| `"section"` \| `"article"` | `"div"` | Semantic HTML element to render. |
+| `interactive` | `boolean` | `false` | Enables hover elevation and pointer cursor for clickable cards. |
+| `children` | `React.ReactNode` | — | Card content. |
+| `className` | `string` | `""` | Additional styling classes. |
+
+---
+
+### 4. Input (`Input.tsx`)
+Form text input with accessible labeling, helper hints, and validation error messages.
+
+| Prop | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `label` | `string` | — | Form field label linked via `htmlFor`. |
+| `error` | `string` | — | Validation error message setting `aria-invalid="true"`. |
+| `hint` | `string` | — | Explanatory helper text beneath the input field. |
+| `disabled` | `boolean` | `false` | Disables user text entry. |
+
+---
+
+### 5. Modal (`Modal.tsx`)
+Accessible dialog overlay with focus trap, ESC key dismissal, body scroll lock, and dark mode backdrop.
+
+| Prop | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `isOpen` | `boolean` | — | Controls open/close visibility. |
+| `onClose` | `() => void` | — | Callback invoked on backdrop click or close button. |
+| `title` | `string` | — | Dialog header title linked via `aria-labelledby`. |
+| `description` | `string` | — | Dialog subtext linked via `aria-describedby`. |
+| `footer` | `React.ReactNode` | — | Modal action buttons container. |
+
+---
+
+### 6. Select (`Select.tsx`)
+Styled dropdown selector supporting placeholder, helper hint, options array, and error indicators.
+
+| Prop | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `label` | `string` | — | Field label element linked to select. |
+| `options` | `Array<{ value: string; label: string }>` | `[]` | Select options list. |
+| `error` | `string` | — | Error text shown beneath select. |
+| `hint` | `string` | — | Supporting hint description. |
+
+---
+
+### 7. Spinner (`Spinner.tsx`)
+Accessible SVG loading spinner with `role="status"` and visually-hidden assistive label.
+
+| Prop | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `size` | `"sm"` \| `"md"` \| `"lg"` | `"md"` | Spinner dimensions (16px, 24px, 32px). |
+| `color` | `"violet"` \| `"white"` \| `"gray"` \| `"primary"` \| `"current"` | `"violet"` | Palette tone of spinning ring. |
+| `label` | `string` | `"Loading..."` | Accessible screen-reader announcement. |
+
+---
+
+### 8. Table (`Table.tsx`)
+Theme-tokenised table sub-primitives ensuring WCAG contrast in both light and dark themes.
+
+- **`Table`**: Root table container with accessible `caption` (aria-label).
+- **`THead`**: Header section with uppercase tracking and subtle border dividers.
+- **`TBody`**: Body container with row dividers.
+- **`TR`**: Table row supporting hover animations and `selected?: boolean` active row highlighting.
+- **`TH`**: Header cell with `scope="col"`.
+- **`TD`**: Data cell with responsive horizontal padding.
+- **`TableEmptyState`**: Centered empty table placeholder supporting `colSpan?: number`.
+
+---
+
+### 9. Toast (`Toast.tsx`)
+Status feedback alert for async operations, blockchain confirmations, and error alerts.
+
+| Prop | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `type` | `"success"` \| `"error"` \| `"warning"` \| `"info"` | `"info"` | Visual palette and icon indicator. |
+| `message` | `string` | — | Notification message text. |
+| `onClose` | `() => void` | — | Optional callback rendering a dismiss button. |

@@ -5,6 +5,9 @@ import SellPage from "./page";
 import { resetConversionRateCache } from "./ratesCache";
 
 // Mock auth module
+// Real catalog text (issue #453), so assertions match what users see.
+jest.mock("next-intl", () => jest.requireActual("../../i18n/testing").nextIntlMock);
+
 jest.mock("../lib/auth", () => ({
   isAuthenticated: () => true,
   getToken: () => "mock-jwt-token",

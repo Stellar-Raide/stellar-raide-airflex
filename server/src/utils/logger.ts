@@ -1,3 +1,5 @@
+import { getRequestId } from "./requestContext";
+
 type LogContext = Record<string, unknown>;
 
 type LogMethod = {
@@ -26,6 +28,9 @@ function formatContext(context: LogContext): LogContext {
 
 function write(level: string, context: LogContext, message: string): void {
   const timestamp = new Date().toISOString();
+  // Correlation ID of the current request (issue #481); an explicit
+  // `requestId` in the context wins.
+  const requestId = (context["requestId"] as string | undefined) ?? getRequestId();
 
   if (process.env["NODE_ENV"] === "production") {
     process.stdout.write(
@@ -33,6 +38,7 @@ function write(level: string, context: LogContext, message: string): void {
         ...formatContext(context),
         level: level.toLowerCase(),
         message,
+        ...(requestId ? { requestId } : {}),
         timestamp,
       })}\n`,
     );
@@ -43,7 +49,8 @@ function write(level: string, context: LogContext, message: string): void {
   const label = level.toUpperCase();
   const color = levelColors[label] ?? "";
   const reset = color ? "\u001b[0m" : "";
-  process.stdout.write(`${color}[${label}] ${time} — ${message}${reset}\n`);
+  const rid = requestId ? ` [${requestId}]` : "";
+  process.stdout.write(`${color}[${label}] ${time}${rid} — ${message}${reset}\n`);
 }
 
 function createLogMethod(level: string): LogMethod {
