@@ -8,8 +8,10 @@ import { SITE_NAME } from "../lib/seo";
 export default function OfflinePage() {
   const router = useRouter();
   const [reconnecting, setReconnecting] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     // If already online when the page mounts (e.g. browser cached it), go home.
     if (typeof window !== "undefined" && window.navigator.onLine) {
       router.replace("/");
@@ -29,7 +31,10 @@ export default function OfflinePage() {
   }, [router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-gray-900">
+    <div
+      data-hydrated={mounted ? "true" : undefined}
+      className="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-gray-900"
+    >
       <div className="flex max-w-md flex-col items-center gap-6 rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
         {reconnecting ? (
           <>

@@ -391,9 +391,7 @@ export default function MarketplaceListings({
               {error}
             </div>
           ) : loading ? (
-            <div className="col-span-full py-16 text-center text-gray-500">
-              Updating listings…
-            </div>
+            <TradeCardSkeleton count={8} />
           ) : trades.length === 0 ? (
             <EmptyState t={t} hasActiveFilters={hasActiveFilters} onClear={handleClearFilters} />
           ) : (

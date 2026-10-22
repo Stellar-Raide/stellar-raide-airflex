@@ -71,6 +71,11 @@ test.describe("Middleware auth redirect", () => {
         value: token,
         url: "http://localhost:3000",
       },
+      {
+        name: "session",
+        value: token,
+        url: "http://127.0.0.1:3000",
+      },
     ]);
 
     const response = await page.goto("/wallet");

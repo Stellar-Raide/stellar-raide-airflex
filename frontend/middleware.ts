@@ -4,10 +4,7 @@ import createIntlMiddleware from "next-intl/middleware";
 import { routing } from "./i18n/routing";
 import { buildContentSecurityPolicy, STATIC_SECURITY_HEADERS } from "./lib/csp";
 
-// Locale prefixes other than the default (`en`) that may appear in the URL.
-const NON_DEFAULT_LOCALES = routing.locales.filter(
-  (locale) => locale !== routing.defaultLocale
-);
+
 
 /**
  * Routes that require a valid session. Matched against the locale-stripped
@@ -56,11 +53,10 @@ function verifyJWT(token: string): { valid: boolean; payload?: any } {
   }
 }
 
-/** Strips a non-default locale prefix (e.g. `/yo/wallet` → `/wallet`). */
+/** Strips any locale prefix (e.g. `/yo/wallet` or `/en/wallet` → `/wallet`). */
 function stripLocalePrefix(pathname: string): string {
-  if (NON_DEFAULT_LOCALES.length === 0) return pathname;
   const pattern = new RegExp(
-    `^/(${NON_DEFAULT_LOCALES.join("|")})(?=/|$)`
+    `^/(${routing.locales.join("|")})(?=/|$)`
   );
   return pathname.replace(pattern, "") || "/";
 }
@@ -109,12 +105,8 @@ export function middleware(request: NextRequest) {
 
     const payload = verified.payload!;
 
-    if (
-      unprefixed.startsWith("/admin") &&
-      payload.role !== "admin" &&
-      payload.role !== "super_admin"
-    ) {
-      return NextResponse.redirect(new URL("/", request.url));
+    if (unprefixed.startsWith("/admin") && payload.role !== "admin") {
+      return secureHeaders(NextResponse.redirect(new URL("/", request.url)));
     }
   }
 
@@ -127,7 +119,28 @@ export function middleware(request: NextRequest) {
   request.headers.set("x-nonce", nonce);
 
   // Handle locale detection, prefixing, redirects, and cookie sync.
-  return secureHeaders(intlMiddleware(request));
+  const response = intlMiddleware(request);
+
+  // Since pages live directly under app/ (no [locale] directory), strip any
+  // internal locale rewrite so Next.js routes to the real app/ file structure.
+  const rewriteHeader = response.headers.get("x-middleware-rewrite");
+  if (rewriteHeader) {
+    try {
+      const rewriteUrl = new URL(rewriteHeader);
+      const rewriteUnprefixed = stripLocalePrefix(rewriteUrl.pathname);
+      if (rewriteUnprefixed === request.nextUrl.pathname) {
+        response.headers.delete("x-middleware-rewrite");
+        response.headers.set("x-middleware-next", "1");
+      } else {
+        rewriteUrl.pathname = rewriteUnprefixed;
+        response.headers.set("x-middleware-rewrite", rewriteUrl.toString());
+      }
+    } catch {
+      // Ignore URL parse error
+    }
+  }
+
+  return secureHeaders(response);
 }
 
 export const config = {

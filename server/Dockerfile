@@ -8,45 +8,43 @@
 # ── Stage 1: Build ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
-# Set a non-root working directory
 WORKDIR /app
 
-# Copy dependency manifests first to leverage Docker layer caching.
-# node_modules are only re-installed when package files change.
-COPY package.json ./
+RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
 
-# Install all dependencies (including devDependencies needed for tsc)
-RUN npm install --ignore-scripts
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/ ./packages/
+COPY server/package.json ./server/
 
-# Copy the rest of the source
-COPY tsconfig.json ./
-COPY src/ ./src/
+RUN pnpm --filter stellar-raide-stellar-raide-airflex-server install --frozen-lockfile
 
-# Compile TypeScript → JavaScript
-RUN npm run build
+COPY server/ ./server/
+
+RUN pnpm --filter stellar-raide-stellar-raide-airflex-server build
 
 # ── Stage 2: Production ─────────────────────────────────────────────────────
 FROM node:20-alpine AS production
 
-# Principle of least privilege — run as a non-root user
 RUN addgroup -S stellar-raide-stellar-raide-airflex && adduser -S stellar-raide-stellar-raide-airflex -G stellar-raide-stellar-raide-airflex
 
 WORKDIR /app
 
-# Copy only the compiled output and production dependency manifests
-COPY --from=builder /app/dist ./dist
-COPY package.json ./
+RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
 
-# Install production dependencies only
-RUN npm install --omit=dev --ignore-scripts && npm cache clean --force
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/ ./packages/
+COPY server/package.json ./server/
 
-# Switch to non-root user
+RUN pnpm --filter stellar-raide-stellar-raide-airflex-server install --prod --frozen-lockfile
+
+COPY --from=builder /app/server/dist ./server/dist
+
+WORKDIR /app/server
+
 USER stellar-raide-stellar-raide-airflex
 
-# Expose the default API port (overridable via PORT env var)
 EXPOSE 3001
 
-# Health-check so container orchestrators can detect unhealthy instances
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3001/health || exit 1
 
