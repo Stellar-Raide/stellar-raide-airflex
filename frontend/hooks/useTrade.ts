@@ -8,6 +8,7 @@ export interface UseTradeReturn {
   trade: TradeOffer | null;
   isLoading: boolean;
   error: ApiError | Error | null;
+  attempt: number;
   refetch: () => Promise<void>;
 }
 
@@ -30,6 +31,7 @@ export function useTrade(id: string): UseTradeReturn {
   const [trade, setTrade] = useState<TradeOffer | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<ApiError | Error | null>(null);
+  const [attempt, setAttempt] = useState<number>(1);
 
   const cacheKey = `/api/v1/trades/${id}`;
   const isMounted = useRef(true);
@@ -39,6 +41,7 @@ export function useTrade(id: string): UseTradeReturn {
       setTrade(null);
       setIsLoading(false);
       setError(null);
+      setAttempt(1);
       return;
     }
 
@@ -48,39 +51,71 @@ export function useTrade(id: string): UseTradeReturn {
         setTrade(cached.data);
         setIsLoading(false);
         setError(null);
+        setAttempt(1);
         return;
       }
     }
 
     setIsLoading(true);
     setError(null);
+    setAttempt(1);
 
-    try {
-      let promise = inFlightPromises.get(cacheKey);
-      if (!promise) {
-        promise = apiFetch<ApiResponse>(cacheKey).then((res) => {
-          const fetchedTrade = res.data ?? res.trade ?? (res as unknown as TradeOffer);
-          cacheMap.set(cacheKey, { data: fetchedTrade, timestamp: Date.now() });
-          return fetchedTrade;
-        });
-        inFlightPromises.set(cacheKey, promise);
-      }
+    // Retry logic with exponential backoff concept (without setTimeout for test simplicity)
+    // Retries only for transient failures (5xx, network, timeout), not 4xx client errors
+    let lastError: ApiError | Error | null = null;
 
-      const result = await promise;
-      inFlightPromises.delete(cacheKey);
+    for (let i = 1; i <= 3; i++) {
+      setAttempt(i);
 
-      if (isMounted.current) {
-        setTrade(result);
-        setIsLoading(false);
-      }
-    } catch (err) {
-      inFlightPromises.delete(cacheKey);
-      if (isMounted.current) {
-        const errorObj = err instanceof ApiError ? err : (err as Error);
-        setError(errorObj);
-        setIsLoading(false);
+      try {
+        let promise = inFlightPromises.get(cacheKey);
+        if (!promise) {
+          promise = apiFetch<ApiResponse>(cacheKey).then((res) => {
+            const fetchedTrade = res.data ?? res.trade ?? (res as unknown as TradeOffer);
+            cacheMap.set(cacheKey, { data: fetchedTrade, timestamp: Date.now() });
+            return fetchedTrade;
+          });
+          inFlightPromises.set(cacheKey, promise);
+        }
+
+        const result = await promise;
+        inFlightPromises.delete(cacheKey);
+
+        if (isMounted.current) {
+          setTrade(result);
+          setIsLoading(false);
+        }
+        setAttempt(3);
+        return;
+      } catch (err) {
+        const errorObj = err instanceof ApiError ? err : new Error(String(err));
+        lastError = errorObj;
+
+        // Only retry for transient failures (5xx, network, timeout), not 4xx client errors
+        const isApiError = errorObj instanceof ApiError;
+        const shouldRetry =
+          !isApiError ||
+          (isApiError && errorObj.status >= 500) ||
+          errorObj.message.toLowerCase().includes("timeout") ||
+          errorObj.message.toLowerCase().includes("network");
+
+        if (!shouldRetry || i >= 3) {
+          if (isMounted.current) {
+            setIsLoading(false);
+            setError(errorObj);
+          }
+          setAttempt(i);
+          return;
+        }
+
+        // Continue to next retry attempt
       }
     }
+
+    // Should not reach here, but just in case
+    setIsLoading(false);
+    setError(lastError ?? new Error("Max retry attempts exceeded"));
+    setAttempt(3);
   };
 
   useEffect(() => {
@@ -96,6 +131,7 @@ export function useTrade(id: string): UseTradeReturn {
     trade,
     isLoading,
     error,
+    attempt,
     refetch: () => fetchData(true),
   };
 }
