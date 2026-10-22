@@ -17,7 +17,7 @@ import { useAuth } from "../hooks/useAuth";
 
 const mockUseAuth = useAuth as unknown as jest.Mock;
 
-function setAuth(state: { role: "admin" | "user" | null; isLoading: boolean }) {
+function setAuth(state: { role: "admin" | "super_admin" | "user" | null; isLoading: boolean }) {
   mockUseAuth.mockReturnValue(state);
 }
 
@@ -41,6 +41,19 @@ describe("AuthGuard", () => {
 
   it("renders the children for an admin", () => {
     setAuth({ role: "admin", isLoading: false });
+
+    render(
+      <AuthGuard role="admin">
+        <p>secret admin panel</p>
+      </AuthGuard>,
+    );
+
+    expect(screen.getByText("secret admin panel")).toBeInTheDocument();
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it("renders the children for a super_admin (inherits admin, #539)", () => {
+    setAuth({ role: "super_admin", isLoading: false });
 
     render(
       <AuthGuard role="admin">

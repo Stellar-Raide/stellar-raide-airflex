@@ -263,3 +263,86 @@ describe("fraud flag review endpoints (issue #491)", () => {
     });
   });
 });
+
+describe("Admin audit logs (issue #539)", () => {
+  const actorId = "99999999-9999-9999-9999-999999999999";
+  const token = jwt.sign({ sub: actorId, role: "super_admin", tokenVersion: 1 }, JWT_SECRET, {
+    expiresIn: "1h",
+  });
+
+  beforeEach(() => {
+    mockQuery.mockReset();
+  });
+
+  it("lets a super_admin query audit entries with filters", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ token_version: 1 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "super_admin" }] });
+    const entry = {
+      id: "e1",
+      action: "trade.dispute_resolved",
+      target_type: "trade",
+      target_id: "t1",
+    };
+    mockQuery.mockResolvedValueOnce({ rows: [entry] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] });
+
+    const res = await request(app)
+      .get("/api/v1/admin/audit-logs?action=trade.dispute_resolved&targetType=trade&page=1&limit=10")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      data: [entry],
+      pagination: { page: 1, limit: 10, total: 1, totalPages: 1 },
+    });
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE action = $1 AND target_type = $2"),
+      ["trade.dispute_resolved", "trade", 10, 0]
+    );
+  });
+
+  it("forbids a regular admin", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ token_version: 1 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] });
+
+    const res = await request(app)
+      .get("/api/v1/admin/audit-logs")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects an unknown action filter with 400", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ token_version: 1 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "super_admin" }] });
+
+    const res = await request(app)
+      .get("/api/v1/admin/audit-logs?action=user.deleted_everything")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+  });
+
+  it.each(["post", "put", "patch", "delete"] as const)(
+    "refuses %s on audit entries with 405",
+    async (method) => {
+      const res = await request(app)[method]("/api/v1/admin/audit-logs/e1")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(405);
+      expect(res.headers["allow"]).toBe("GET");
+      expect(mockQuery).not.toHaveBeenCalled();
+    }
+  );
+
+  it("still lets a super_admin use admin-only routes", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ token_version: 1 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "super_admin" }] });
+
+    const res = await request(app)
+      .get("/api/v1/admin/queues")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+});

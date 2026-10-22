@@ -15,7 +15,8 @@
     { "name": "Trades", "description": "Create, browse, and settle P2P trade offers." },
     { "name": "Wallet", "description": "Stellar wallet balance and Naira bank withdrawals via Paystack." },
     { "name": "Profile", "description": "Authenticated user profile and trade history." },
-    { "name": "Events", "description": "Real-time trade status updates via Server-Sent Events." }
+    { "name": "Events", "description": "Real-time trade status updates via Server-Sent Events." },
+    { "name": "Admin", "description": "Platform administration. The audit trail is readable by super-admins only." }
   ],
   "components": {
     "securitySchemes": {
@@ -72,6 +73,47 @@
           "total": { "type": "integer", "example": 42 },
           "totalPages": { "type": "integer", "example": 3 }
         }
+      },
+      "DataExport": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["pending", "processing", "ready", "failed", "expired"] },
+          "format": { "type": "string", "enum": ["json"] },
+          "requestedAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "expiresAt": { "type": "string", "format": "date-time", "nullable": true },
+          "statusUrl": { "type": "string", "format": "uri" },
+          "download": {
+            "type": "object",
+            "nullable": true,
+            "description": "Present once status is ready. The signed URL is short-lived; request statusUrl again for a fresh one.",
+            "properties": {
+              "url": { "type": "string", "format": "uri" },
+              "expiresAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "required": ["id", "status", "format", "requestedAt", "statusUrl"]
+      },
+      "AuditLogEntry": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "occurred_at": { "type": "string", "format": "date-time" },
+          "actor_id": { "type": "string", "format": "uuid" },
+          "actor_role": { "type": "string", "nullable": true, "example": "admin" },
+          "action": {
+            "type": "string",
+            "enum": ["trade.dispute_resolved", "fraud_flag.reviewed", "webhook.replayed", "user.banned", "user.unbanned", "kyc.approved", "kyc.rejected"]
+          },
+          "target_type": { "type": "string", "enum": ["trade", "fraud_flag", "webhook_event", "user", "kyc"] },
+          "target_id": { "type": "string" },
+          "before_value": { "type": "object", "nullable": true, "description": "Resource state before the action." },
+          "after_value": { "type": "object", "nullable": true, "description": "Resource state after the action." },
+          "metadata": { "type": "object", "description": "Request context: requestId, ip, userAgent." }
+        },
+        "required": ["id", "occurred_at", "actor_id", "action", "target_type", "target_id", "metadata"]
       }
     }
   },
@@ -467,6 +509,89 @@
             "content": { "text/event-stream": { "schema": { "type": "string" } } }
           },
           "401": { "description": "Missing or invalid Authorization header", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/users/me/export": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "Request a GDPR data portability export",
+        "description": "Starts asynchronous generation of a machine-readable JSON export of all personal data held about the caller: account details, KYC record, trade history, ratings, wallet ledger, withdrawals and referrals. Credentials and raw payment details are omitted or masked, and the export lists every redaction. The user is notified by SMS when it is ready. Limited to one request per user per 24 hours.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "202": {
+            "description": "Export accepted for generation",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" }, "export": { "$ref": "#/components/schemas/DataExport" } } } } }
+          },
+          "401": { "description": "Missing or invalid Authorization header", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "429": {
+            "description": "An export was already requested in the last 24 hours. Retry-After gives the seconds until a new request is allowed; `export` is the existing request.",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string" }, "retryAfterSeconds": { "type": "integer" }, "export": { "$ref": "#/components/schemas/DataExport" } } } } }
+          }
+        }
+      }
+    },
+    "/api/v1/users/me/export/{exportId}": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "Get the status of a data export",
+        "description": "Returns the caller's export request. Once ready, `download.url` is a signed URL valid for a short time (default 15 minutes).",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "exportId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export status",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "export": { "$ref": "#/components/schemas/DataExport" } } } } }
+          },
+          "400": { "description": "Malformed export id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing or invalid Authorization header", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Data export not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/users/me/export/{exportId}/download": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "Download a data export via signed URL",
+        "description": "Returns the export as a JSON attachment. Authorised by the HMAC signature in the query string (bound to the export, its owner and the expiry), so no Bearer token is needed. Invalid, expired or unknown links all return 404.",
+        "security": [],
+        "parameters": [
+          { "name": "exportId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "expires", "in": "query", "required": true, "description": "Link expiry, Unix epoch seconds.", "schema": { "type": "integer" } },
+          { "name": "signature", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "The export document", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "404": { "description": "Download link is invalid or has expired", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/admin/audit-logs": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Query the immutable admin audit trail (super_admin only)",
+        "description": "State-changing admin actions (dispute resolutions, fraud flag reviews, webhook replays) with actor, target, before/after state and request context, newest first. Entries are append-only: POST/PUT/PATCH/DELETE return 405 and the database rejects modification. Entries older than 365 days are purged by a daily retention job.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "actorId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "action", "in": "query", "schema": { "type": "string", "enum": ["trade.dispute_resolved", "fraud_flag.reviewed", "webhook.replayed", "user.banned", "user.unbanned", "kyc.approved", "kyc.rejected"] } },
+          { "name": "targetType", "in": "query", "schema": { "type": "string", "enum": ["trade", "fraud_flag", "webhook_event", "user", "kyc"] } },
+          { "name": "targetId", "in": "query", "schema": { "type": "string" } },
+          { "name": "from", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "to", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching audit entries",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/AuditLogEntry" } }, "pagination": { "$ref": "#/components/schemas/Pagination" } } } } }
+          },
+          "400": { "description": "Invalid query parameters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing or invalid Authorization header", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Super-admin access required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     }

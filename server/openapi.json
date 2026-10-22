@@ -801,6 +801,149 @@
             }
           }
         }
+      },
+      "DataExport": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "format",
+          "requestedAt",
+          "statusUrl"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "processing",
+              "ready",
+              "failed",
+              "expired"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json"
+            ]
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "statusUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "download": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Present once status is ready. The signed URL is short-lived (DATA_EXPORT_LINK_TTL_SECONDS); request statusUrl again for a fresh one.",
+            "required": [
+              "url",
+              "expiresAt"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "AuditLogEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "occurred_at",
+          "actor_id",
+          "action",
+          "target_type",
+          "target_id",
+          "metadata"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actor_role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "admin"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "trade.dispute_resolved",
+              "fraud_flag.reviewed",
+              "webhook.replayed",
+              "user.banned",
+              "user.unbanned",
+              "kyc.approved",
+              "kyc.rejected"
+            ]
+          },
+          "target_type": {
+            "type": "string",
+            "enum": [
+              "trade",
+              "fraud_flag",
+              "webhook_event",
+              "user",
+              "kyc"
+            ]
+          },
+          "target_id": {
+            "type": "string"
+          },
+          "before_value": {
+            "description": "Resource state before the action (any JSON value or null)."
+          },
+          "after_value": {
+            "description": "Resource state after the action (any JSON value or null)."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Request context: requestId, ip, userAgent."
+          }
+        }
       }
     },
     "responses": {
@@ -2284,6 +2427,327 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/audit-logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Query the immutable admin audit trail (super_admin only)",
+        "description": "State-changing admin actions (dispute resolutions, fraud flag reviews, webhook replays, ...) with actor, target, before/after state and request context, newest first (issue #539). Entries are append-only: POST/PUT/PATCH/DELETE return 405 and the database rejects modification. Entries older than 365 days are purged daily.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "actorId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/AuditLogEntry/properties/action"
+            }
+          },
+          {
+            "name": "targetType",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/AuditLogEntry/properties/target_type"
+            }
+          },
+          {
+            "name": "targetId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching audit entries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "pagination"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuditLogEntry"
+                      }
+                    },
+                    "pagination": {
+                      "$ref": "#/components/schemas/PaginationMeta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query parameters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/users/me/export": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Request a GDPR data portability export",
+        "description": "Starts asynchronous generation of a machine-readable JSON export of all personal data held about the caller: account details, KYC record, trade history, ratings, wallet ledger, withdrawals and referrals (issue #539). Credentials and raw payment details are omitted or masked; the export lists every redaction. The user is notified by SMS when it is ready. Limited to one request per user per 24 hours.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Export accepted for generation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "message",
+                    "export"
+                  ],
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "export": {
+                      "$ref": "#/components/schemas/DataExport"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "description": "An export was already requested in the last 24 hours. The Retry-After header gives the seconds until a new request is allowed; `export` is the existing request.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "retryAfterSeconds",
+                    "export"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "retryAfterSeconds": {
+                      "type": "integer"
+                    },
+                    "export": {
+                      "$ref": "#/components/schemas/DataExport"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/users/me/export/{exportId}": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Get the status of a data export",
+        "description": "Returns the caller's export request. Once ready, `download.url` is a signed URL valid for a short time (default 15 minutes).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "exportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "export"
+                  ],
+                  "properties": {
+                    "export": {
+                      "$ref": "#/components/schemas/DataExport"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed export id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/users/me/export/{exportId}/download": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Download a data export via signed URL",
+        "description": "Returns the export as a JSON attachment. Authorised by the HMAC signature in the query string (bound to the export, its owner and the expiry), so no Bearer token is needed. Invalid, expired or unknown links all return 404.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "exportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "expires",
+            "in": "query",
+            "required": true,
+            "description": "Link expiry, Unix epoch seconds.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "signature",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The export document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"

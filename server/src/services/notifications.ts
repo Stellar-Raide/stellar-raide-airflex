@@ -84,7 +84,7 @@ async function loadAdmins(): Promise<NotificationTarget[]> {
   const { rows } = await pool.query<NotificationTarget>(
     `SELECT id, phone, COALESCE(opt_out_notifications, false) AS opt_out_notifications
      FROM users
-     WHERE role = 'admin'`
+     WHERE role IN ('admin', 'super_admin')`
   );
   return rows;
 }

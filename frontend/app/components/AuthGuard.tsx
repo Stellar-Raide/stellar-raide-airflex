@@ -33,6 +33,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "../hooks/useAuth";
+import { isAdminRole } from "../lib/auth";
 import { Spinner } from "../../components/ui/Spinner";
 
 interface AuthGuardProps {
@@ -47,8 +48,8 @@ export function AuthGuard({ role, children }: AuthGuardProps) {
 
   const allowed =
     role === "admin"
-      ? userRole === "admin"
-      : userRole === "user" || userRole === "admin";
+      ? isAdminRole(userRole)
+      : userRole === "user" || isAdminRole(userRole);
 
   useEffect(() => {
     if (!isLoading && !allowed) {
