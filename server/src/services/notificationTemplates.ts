@@ -62,6 +62,11 @@ export const NOTIFICATION_TEMPLATES = {
   DATA_EXPORT_READY:
     "AirFlex: Your personal data export is ready. Download it from your " +
     "profile in the app within {days} days.",
+
+  KYC_DOCUMENT_EXPIRING:
+    "AirFlex: Your KYC document expires on {expiryDate}. Please renew it in the app to keep your account active.",
+  KYC_ADMIN_SUMMARY:
+    "AirFlex admin: {count} KYC document(s) are expired or expiring soon. Review the affected accounts.",
 } as const;
 
 export type NotificationTemplateKey = keyof typeof NOTIFICATION_TEMPLATES;

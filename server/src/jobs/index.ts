@@ -16,6 +16,7 @@ import { processWithdrawalProcessor }     from "./processors/process-withdrawal"
 import { generateDataExportProcessor, purgeExpiredDataExports } from "./processors/generate-data-export";
 import { purgeExpiredAuditLogs }          from "./auditLogRetention";
 import { schedule, ONE_DAY_MS }           from "./cron";
+import { checkKycDocumentExpiry } from "./kycExpiry";
 
 /** Initialise the queue service and register all processors. */
 export function initJobQueue(): void {
@@ -35,6 +36,7 @@ export function initJobQueue(): void {
   // Daily maintenance (issue #539)
   schedule({ name: "audit-log-retention",   intervalMs: ONE_DAY_MS, run: () => purgeExpiredAuditLogs() });
   schedule({ name: "data-export-cleanup",   intervalMs: ONE_DAY_MS, run: () => purgeExpiredDataExports() });
+  schedule({ name: "kyc-document-expiry", intervalMs: ONE_DAY_MS, run: checkKycDocumentExpiry });
 }
 
 // Re-export queue primitives so route/service files only import from here
