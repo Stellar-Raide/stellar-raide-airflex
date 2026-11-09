@@ -35,7 +35,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Cache server dependencies and TypeScript build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             server/node_modules
