@@ -291,3 +291,12 @@ Full policy, scope, and coordinated disclosure terms → [SECURITY.md](./SECURIT
 ## License
 
 [MIT](./LICENSE)
+
+## Resolved Issues
+
+The following issues have been addressed in this release:
+
+- Added issue templates for bug reports and feature requests
+- Added contributing guidelines and CODEOWNERS
+- Improved repository documentation and onboarding
+
