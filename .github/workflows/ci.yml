@@ -137,7 +137,7 @@ jobs:
 
       # Cache the Cargo registry and build artifacts to speed up runs.
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
